@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>SK Flex — Billing</title>
+<link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=Noto+Sans+Tamil:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<!-- PDF generation (invoice → canvas → PDF), loaded from CDN. The app still
+     works fully without internet access — Download PDF falls back to the
+     browser's native print dialog if these fail to load. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body class="lang-en">
+
+<!-- ================= Loading screen ================= -->
+<div id="loadingScreen">
+  <img src="assets/logo.png" alt="SK Flex">
+  <div class="load-bar"><span></span></div>
+</div>
+
+<!-- ================= Header ================= -->
+<div class="appbar">
+  <div class="appbar-inner">
+    <div class="brand">
+      <div class="brand-mark"><img id="headerLogo" src="assets/logo.png" alt="Logo"></div>
+      <div class="brand-text">
+        <h1 id="headerCompanyName">SK Flex</h1>
+        <p><span class="ta-only">அளவு போடு, விலை பாரு, பில் ரெடி</span><span class="en-only">Flex &amp; Frame Billing</span></p>
+      </div>
+    </div>
+    <div class="appbar-actions">
+      <div class="lang-toggle">
+        <button id="btnLangEn" class="active">EN</button>
+        <button id="btnLangTa">தமிழ்</button>
+      </div>
+      <button class="icon-btn" id="btnGotoSettings" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ================= BILLING PAGE ================= -->
+  <div class="page active" id="page-billing">
+
+    <div class="product-tabs">
+      <button id="btnTabFlex" data-product="flex" class="active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
+        <span class="ta-only">ஃபிளெக்ஸ்</span><span class="en-only">Flex</span>
+      </button>
+      <button id="btnTabFrame" data-product="frame">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><rect x="7" y="7" width="10" height="10" rx="1"></rect></svg>
+        <span class="ta-only">ஃபிரேம்</span><span class="en-only">Frame</span>
+      </button>
+    </div>
+
+    <!-- ---------- FLEX calculator ---------- -->
+    <div class="frame-card" id="flexCard">
+      <div class="frame-card-inner">
+        <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
+        <div class="ticket-head">
+          <h2><span class="ta-only">ஃபிளெக்ஸ் கால்குலேட்டர்</span><span class="en-only">Flex Calculator</span></h2>
+          <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
+        </div>
+
+        <div class="dims-row">
+          <div class="dim-field">
+            <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
+            <div class="input-shell"><input type="number" id="inputWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+          </div>
+          <div class="dims-x">×</div>
+          <div class="dim-field">
+            <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
+            <div class="input-shell"><input type="number" id="inputHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+          </div>
+          <div class="warn-msg" id="warnMsg"></div>
+        </div>
+
+        <div class="rate-row">
+          <div class="rate-field">
+            <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
+            <div class="input-shell"><span class="prefix" id="currPrefix1">₹</span><input type="number" id="inputRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
+          </div>
+          <div class="rate-field">
+            <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
+            <div class="input-shell readout"><span class="prefix" id="displaySqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
+          </div>
+        </div>
+
+        <div class="result-strip">
+          <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaText">0 × 0 = 0 sq.ft</b></div>
+          <div style="text-align:right;">
+            <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
+            <div class="amount" id="displayAmount">₹0.00</div>
+          </div>
+        </div>
+
+        <button class="add-btn" id="btnAddFlex" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+          <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ---------- FRAME calculator ---------- -->
+    <div class="frame-card hidden" id="frameCard">
+      <div class="frame-card-inner">
+        <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
+        <div class="ticket-head">
+          <h2><span class="ta-only">ஃபிரேம் கால்குலேட்டர்</span><span class="en-only">Frame Calculator</span></h2>
+          <span class="ticket-tag"><span class="ta-only">சைஸ் + அகலம் = விலை</span><span class="en-only">Size + Width = Price</span></span>
+        </div>
+
+        <div class="select-row">
+          <div class="dim-field">
+            <label><span class="ta-only">ஃபிரேம் சைஸ்</span><span class="en-only">Frame Size</span></label>
+            <div class="input-shell"><select id="selectFrameSize"><option value="">Select size</option></select></div>
+          </div>
+          <div class="dim-field">
+            <label><span class="ta-only">ஃபிரேம் அகலம்</span><span class="en-only">Frame Width</span></label>
+            <div class="input-shell"><select id="selectFrameWidth" disabled><option value="">Select size first</option></select></div>
+          </div>
+        </div>
+
+        <div class="frame-price-readout na" id="framePriceBox" style="margin-top:14px;">
+          <span class="label"><span class="ta-only">விலை</span><span class="en-only">Price</span></span>
+          <span class="value" id="framePriceValue">—</span>
+        </div>
+
+        <div class="qty-price-row">
+          <div class="rate-field">
+            <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
+            <div class="input-shell"><input type="number" id="inputFrameQty" inputmode="decimal" min="1" step="1" value="1"></div>
+          </div>
+          <div class="rate-field">
+            <label><span class="ta-only">மொத்தம்</span><span class="en-only">Line Total</span></label>
+            <div class="input-shell readout"><span class="prefix" id="currPrefix2">₹</span><span class="prefix" id="frameLineTotal">0.00</span></div>
+          </div>
+        </div>
+
+        <button class="add-btn frame-btn" id="btnAddFrame" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+          <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ---------- Customer ---------- -->
+    <div class="section-title"><h3><span class="ta-only">வாடிக்கையாளர் விவரம்</span><span class="en-only">Customer Details</span></h3><span class="hint en-only">Optional</span></div>
+    <div class="customer-card">
+      <div class="customer-row">
+        <input type="text" id="custName" list="customerNames" placeholder="Customer name">
+        <input type="tel" id="custPhone" placeholder="Phone number">
+      </div>
+      <div class="customer-row addr"><input type="text" id="custAddress" placeholder="Address (optional)"></div>
+      <datalist id="customerNames"></datalist>
+    </div>
+
+    <!-- ---------- Bill items ---------- -->
+    <div class="section-title">
+      <h3><span class="ta-only">பில் ஐட்டம்ஸ்</span><span class="en-only">Bill Items</span></h3>
+      <button class="ghost-btn" id="btnNewBill"><span class="ta-only">புது பில்</span><span class="en-only">New Bill</span></button>
+    </div>
+    <div class="bill-list" id="billList"></div>
+    <div class="grand-total" id="grandTotal" style="display:none;">
+      <span class="label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Grand Total</span></span>
+      <span class="value" id="grandTotalValue">₹0.00</span>
+    </div>
+
+    <div class="action-row" style="grid-template-columns:1fr 1.4fr;">
+      <button id="btnClearBill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6h14z"></path></svg><span class="ta-only">அழி</span><span class="en-only">Clear</span></button>
+      <button class="primary" id="btnPreviewInvoice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M16 13H8m8 4H8m2-8H8"></path></svg><span class="ta-only">இன்வாய்ஸ் பார்</span><span class="en-only">Preview Invoice</span></button>
+    </div>
+
+    <footer class="app-footer">
+      <span class="ta-only">SK Flex · உங்க கடைக்கு சொந்தமான பில்லிங் செயலி</span>
+      <span class="en-only">SK Flex · professional billing for your Flex &amp; Frame shop</span>
+    </footer>
+  </div>
+
+  <!-- ================= SETTINGS PAGE ================= -->
+  <div class="page" id="page-settings">
+    <div class="section-title" style="margin-top:8px;">
+      <h3><span class="ta-only">செட்டிங்ஸ்</span><span class="en-only">Settings</span></h3>
+      <button class="ghost-btn" id="btnBackToBilling">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+        <span class="en-only">Back</span><span class="ta-only">பின்</span>
+      </button>
+    </div>
+
+    <div class="settings-tabs">
+      <button class="active" data-tab="company">Company Profiles</button>
+      <button data-tab="customers">Customers</button>
+      <button data-tab="prefs">Billing Defaults</button>
+      <button data-tab="data">Data</button>
+    </div>
+
+    <!-- ---- Company panel ---- -->
+    <div class="settings-panel active" id="panel-company">
+      <div class="card-block">
+        <h4 id="companyFormTitle">Add Company</h4>
+        <p class="sub">Save multiple company/brand profiles (e.g. SK Flex, SK Digital, SK Ads). Click a saved company to auto-fill it into the invoice.</p>
+        <div class="logo-upload field-block">
+          <div class="preview" id="companyLogoPreview"><img src="assets/logo.png" alt=""></div>
+          <label class="upload-btn">Upload Logo<input type="file" id="companyLogoInput" accept="image/*"></label>
+        </div>
+        <div class="field-block"><label class="f-label">Company Name</label><div class="input-shell"><input type="text" id="companyFormName" placeholder="e.g. SK Flex" style="font-size:15px;"></div></div>
+        <div class="field-block"><label class="f-label">Phone</label><div class="input-shell"><input type="tel" id="companyFormPhone" placeholder="Phone number" style="font-size:15px;"></div></div>
+        <div class="field-block"><label class="f-label">Address</label><div class="input-shell"><input type="text" id="companyFormAddress" placeholder="Shop address" style="font-size:15px;"></div></div>
+        <div class="modal-actions" style="margin-top:4px;">
+          <button class="btn secondary" id="btnCancelCompanyEdit">Cancel</button>
+          <button class="btn primary" id="btnSaveCompany">Save Company</button>
+        </div>
+        <div class="saved-note" id="companySavedNote"></div>
+      </div>
+      <div id="companyList"></div>
+    </div>
+
+    <!-- ---- Customers panel ---- -->
+    <div class="settings-panel" id="panel-customers">
+      <div class="card-block">
+        <h4 id="customerFormTitle">Add Customer</h4>
+        <p class="sub">Saved customers auto-fill when you type their name on the Billing page.</p>
+        <div class="field-block"><label class="f-label">Name</label><div class="input-shell"><input type="text" id="customerFormName" placeholder="Customer name" style="font-size:15px;"></div></div>
+        <div class="field-grid2">
+          <div class="field-block"><label class="f-label">Phone</label><div class="input-shell"><input type="tel" id="customerFormPhone" placeholder="Phone number" style="font-size:15px;"></div></div>
+          <div class="field-block"><label class="f-label">Address (optional)</label><div class="input-shell"><input type="text" id="customerFormAddress" placeholder="Address" style="font-size:15px;"></div></div>
+        </div>
+        <div class="modal-actions" style="margin-top:4px;">
+          <button class="btn secondary" id="btnCancelCustomerEdit">Cancel</button>
+          <button class="btn primary" id="btnSaveCustomer">Save Customer</button>
+        </div>
+        <div class="saved-note" id="customerSavedNote"></div>
+      </div>
+      <div id="customerListUI"></div>
+    </div>
+
+    <!-- ---- Preferences panel ---- -->
+    <div class="settings-panel" id="panel-prefs">
+      <div class="card-block">
+        <h4>Billing Defaults</h4>
+        <p class="sub">These defaults apply across the Flex calculator and new bills.</p>
+        <div class="field-grid2">
+          <div class="field-block"><label class="f-label">Currency Symbol</label><div class="input-shell"><input type="text" id="settingCurrency" maxlength="3" style="font-size:15px;"></div></div>
+          <div class="field-block"><label class="f-label">Default Flex Rate (per sq.ft)</label><div class="input-shell"><input type="number" id="settingRate" min="0" step="0.5" style="font-size:15px;"></div></div>
+          <div class="field-block"><label class="f-label">Minimum Size (ft)</label><div class="input-shell"><input type="number" id="settingMin" min="0" step="0.5" style="font-size:15px;"></div></div>
+          <div class="field-block"><label class="f-label">Maximum Size (ft)</label><div class="input-shell"><input type="number" id="settingMax" min="1" step="1" style="font-size:15px;"></div></div>
+        </div>
+        <button class="btn primary" id="btnSavePrefs">Save Defaults</button>
+        <div class="saved-note" id="prefsSavedNote"></div>
+      </div>
+    </div>
+
+    <!-- ---- Data panel ---- -->
+    <div class="settings-panel" id="panel-data">
+      <div class="card-block">
+        <h4>Backup &amp; Reset</h4>
+        <p class="sub">Export your companies, customers and defaults as a backup file, or restore from one.</p>
+        <div class="modal-actions" style="margin-top:0;">
+          <button class="btn secondary" id="btnExportData">Export Data</button>
+          <label class="btn secondary" style="cursor:pointer;">Import Data<input type="file" id="btnImportData" accept="application/json" style="display:none;"></label>
+        </div>
+      </div>
+      <div class="card-block">
+        <h4 style="color:var(--danger);">Reset Everything</h4>
+        <p class="sub">Permanently clears companies, customers and settings on this device.</p>
+        <button class="ghost-btn danger" id="btnResetAll">Reset All Data</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Bottom nav (mobile) ================= -->
+<div class="bottom-nav">
+  <button class="active" data-page="billing">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M16 13H8m8 4H8"></path></svg>
+    <span class="ta-only">பில்லிங்</span><span class="en-only">Billing</span>
+  </button>
+  <button data-page="settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+    <span class="ta-only">செட்டிங்ஸ்</span><span class="en-only">Settings</span>
+  </button>
+</div>
+
+<!-- ================= Invoice overlay ================= -->
+<div class="invoice-overlay" id="invoiceOverlay">
+  <div class="invoice-shell">
+    <div class="invoice-toolbar">
+      <button class="btn-print" id="btnPrint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"></path></svg>Print</button>
+      <button class="btn-pdf" id="btnDownloadPdf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg><span id="btnDownloadPdfLabel">Download PDF</span></button>
+      <button class="btn-share" id="btnShare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"></path></svg>Share</button>
+      <button class="btn-close" id="btnCloseInvoice" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+    </div>
+    <div id="invoiceArea"><!-- populated by JS --></div>
+  </div>
+</div>
+
+<!-- ================= Confirm modal ================= -->
+<div class="modal-overlay" id="confirmOverlay">
+  <div class="modal">
+    <h3 id="confirmTitle">Are you sure?</h3>
+    <p class="sub" id="confirmMessage">This action cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn secondary" id="btnConfirmCancel">Cancel</button>
+      <button class="btn primary" id="btnConfirmOk" style="background:var(--danger);">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

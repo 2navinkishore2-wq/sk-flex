@@ -1,0 +1,30 @@
+{
+  "currency": "₹",
+  "widthOptions": [
+    { "id": "beeding", "label": "Beeding (No Frame)" },
+    { "id": "1in", "label": "1 inch" },
+    { "id": "1.5in", "label": "1.5 inch" },
+    { "id": "2in", "label": "2 inch" }
+  ],
+  "sizes": [
+    { "size": "8x6",   "beeding": 70,   "1in": 130,  "1.5in": null, "2in": null },
+    { "size": "10x8",  "beeding": 110,  "1in": 175,  "1.5in": null, "2in": null },
+    { "size": "12x8",  "beeding": 125,  "1in": 200,  "1.5in": 240,  "2in": null },
+    { "size": "12x10", "beeding": 170,  "1in": 250,  "1.5in": 290,  "2in": null },
+    { "size": "10x15", "beeding": 190,  "1in": 260,  "1.5in": 300,  "2in": null },
+    { "size": "12x15", "beeding": 225,  "1in": 275,  "1.5in": 330,  "2in": null },
+    { "size": "12x18", "beeding": 255,  "1in": 350,  "1.5in": 400,  "2in": 450 },
+    { "size": "12x24", "beeding": 420,  "1in": 560,  "1.5in": 610,  "2in": 660 },
+    { "size": "12x30", "beeding": 500,  "1in": 675,  "1.5in": 775,  "2in": 825 },
+    { "size": "12x36", "beeding": 620,  "1in": 740,  "1.5in": 835,  "2in": 940 },
+    { "size": "16x20", "beeding": 565,  "1in": 670,  "1.5in": 770,  "2in": 910 },
+    { "size": "16x24", "beeding": 675,  "1in": 775,  "1.5in": 880,  "2in": 1020 },
+    { "size": "18x24", "beeding": 760,  "1in": 870,  "1.5in": 970,  "2in": 1120 },
+    { "size": "20x24", "beeding": 850,  "1in": 950,  "1.5in": 1050, "2in": 1200 },
+    { "size": "20x30", "beeding": 1050, "1in": 1160, "1.5in": 1310, "2in": 1600 },
+    { "size": "24x36", "beeding": 1515, "1in": 1720, "1.5in": 2110, "2in": 2500 },
+    { "size": "30x40", "beeding": 2150, "1in": 2680, "1.5in": 2850, "2in": 3350 },
+    { "size": "36x40", "beeding": 2550, "1in": 3200, "1.5in": 3500, "2in": 3950 },
+    { "size": "36x48", "beeding": 3050, "1in": 3850, "1.5in": 4300, "2in": 4800 }
+  ]
+}
