@@ -696,51 +696,123 @@
   $('btnPrint').addEventListener('click', function () { window.print(); });
   $('btnDownloadPdf').addEventListener('click', downloadInvoicePdf);
 
+  // Converts an <img> element's src to a base64 data: URL so html2canvas
+  // never has to paint a cross-origin / local-file image onto its internal
+  // canvas. Drawing such an image (e.g. <img src="assets/logo.png"> when the
+  // app is opened via file://, or a custom-uploaded logo) marks that canvas
+  // as "tainted", and canvas.toDataURL() then throws a SecurityError. That
+  // was the real, silent cause of PDF generation failing. Returns a Promise
+  // that always resolves (never rejects) — if a given image can't be
+  // inlined, it's left as-is and the real reason is logged, but it doesn't
+  // block the rest of the PDF.
+  function inlineImageAsDataURL(img) {
+    return new Promise(function (resolve) {
+      if (!img.src || img.src.indexOf('data:') === 0) { resolve(); return; }
+      var done = false;
+      var finish = function () { if (!done) { done = true; resolve(); } };
+
+      var worker = new Image();
+      worker.crossOrigin = 'anonymous';
+      worker.onload = function () {
+        try {
+          var c = document.createElement('canvas');
+          c.width = worker.naturalWidth || worker.width;
+          c.height = worker.naturalHeight || worker.height;
+          var ctx = c.getContext('2d');
+          ctx.drawImage(worker, 0, 0);
+          img.src = c.toDataURL('image/png'); // succeeds only if not tainted
+        } catch (err) {
+          console.error('Could not inline invoice image (will render without it):', err);
+        }
+        finish();
+      };
+      worker.onerror = function (err) {
+        console.error('Could not load invoice image for inlining:', img.src, err);
+        finish();
+      };
+      worker.src = img.src;
+      // Safety timeout so a hung/broken image request can't stall the PDF.
+      setTimeout(finish, 4000);
+    });
+  }
+
   function downloadInvoicePdf() {
     var btn = $('btnDownloadPdf'), label = $('btnDownloadPdfLabel');
     var originalLabel = label.textContent;
 
-    // Graceful fallback if the CDN libraries didn't load (e.g. offline use).
-    if (!window.html2canvas || !window.jspdf) {
-      window.print();
+    // 3 & 6: verify the PDF libraries are actually present before using them.
+    if (typeof window.html2canvas !== 'function') {
+      var e1 = new Error('html2canvas failed to load — window.html2canvas is not a function.');
+      console.error(e1);
+      openConfirm(isTa() ? 'பிழை' : 'Error', e1.message, null, true);
+      return;
+    }
+    if (!window.jspdf || typeof window.jspdf.jsPDF !== 'function') {
+      var e2 = new Error('jsPDF failed to load — window.jspdf.jsPDF is not a function.');
+      console.error(e2);
+      openConfirm(isTa() ? 'பிழை' : 'Error', e2.message, null, true);
+      return;
+    }
+
+    // 4 & 5: verify the bill element exists before generating the PDF.
+    var area = $('invoiceArea');
+    if (!area || !area.querySelector('.inv-head')) {
+      var e3 = new Error('Invoice element (#invoiceArea) was not found or is empty.');
+      console.error(e3);
+      openConfirm(isTa() ? 'பிழை' : 'Error', e3.message, null, true);
       return;
     }
 
     btn.disabled = true;
     label.textContent = 'Generating…';
 
-    var area = $('invoiceArea');
-    window.html2canvas(area, { scale: 2, backgroundColor: '#ffffff', useCORS: true })
+    var marginMm = 10; // margin: 10mm
+    var images = Array.prototype.slice.call(area.querySelectorAll('img'));
+    var originalSrcs = images.map(function (img) { return img.src; });
+
+    Promise.all(images.map(inlineImageAsDataURL))
+      .then(function () {
+        return window.html2canvas(area, { scale: 2, backgroundColor: '#ffffff', useCORS: true }); // html2canvas scale: 2
+      })
       .then(function (canvas) {
         var jsPDF = window.jspdf.jsPDF;
-        var pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+        var pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' }); // jsPDF unit: mm, format: a4, orientation: portrait
         var pageWidth = pdf.internal.pageSize.getWidth();
         var pageHeight = pdf.internal.pageSize.getHeight();
-        var imgWidth = pageWidth;
+        var usableWidth = pageWidth - marginMm * 2;
+        var usableHeight = pageHeight - marginMm * 2;
+
+        var imgWidth = usableWidth;
         var imgHeight = (canvas.height * imgWidth) / canvas.width;
-        var imgData = canvas.toDataURL('image/png');
+        var imgData = canvas.toDataURL('image/jpeg', 1.0); // image quality: 1.0
 
         var heightLeft = imgHeight;
-        var position = 0;
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+        var position = marginMm;
+
+        pdf.addImage(imgData, 'JPEG', marginMm, position, imgWidth, imgHeight);
+        heightLeft -= usableHeight;
+
         while (heightLeft > 0) {
-          position = heightLeft - imgHeight;
+          position = marginMm - (imgHeight - heightLeft);
           pdf.addPage();
-          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-          heightLeft -= pageHeight;
+          pdf.addImage(imgData, 'JPEG', marginMm, position, imgWidth, imgHeight);
+          heightLeft -= usableHeight;
         }
 
         var company = getActiveCompany();
-        var fileName = ((company.name || 'SKFlex') + '-Invoice-' + (currentInvoiceNo || Date.now()))
+        var fileName = ((company.name || 'SK-Flex') + '-Bill-' + (currentInvoiceNo || Date.now()))
           .replace(/[^a-z0-9\-]+/gi, '_');
-        pdf.save(fileName + '.pdf');
+        pdf.save(fileName + '.pdf'); // auto-saves the file, no print dialog, no "Save as PDF" step
       })
       .catch(function (err) {
-        console.error('PDF generation failed, falling back to print dialog.', err);
-        window.print();
+        // 1 & 2: no generic catch-all message — log and surface the real error.
+        console.error(err);
+        var msg = (err && err.message) ? err.message : String(err);
+        openConfirm(isTa() ? 'பிழை' : 'Error', msg, null, true);
       })
       .finally(function () {
+        // Restore original <img> src values (undo the inlining).
+        images.forEach(function (img, i) { img.src = originalSrcs[i]; });
         btn.disabled = false;
         label.textContent = originalLabel;
       });
