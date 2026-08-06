@@ -50,6 +50,14 @@
   <!-- ================= BILLING PAGE ================= -->
   <div class="page active" id="page-billing">
 
+    <!-- ---------- Bill Date ---------- -->
+    <div class="customer-card" id="billDateCard">
+      <div class="field-block" style="margin-bottom:0;">
+        <label class="f-label"><span class="ta-only">பில் தேதி</span><span class="en-only">Bill Date</span></label>
+        <div class="input-shell"><input type="date" id="billDate"></div>
+      </div>
+    </div>
+
     <div class="product-tabs">
       <button id="btnTabFlex" data-product="flex" class="active">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
@@ -66,6 +74,10 @@
       <button id="btnTabStarflex" data-product="starflex">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
         <span class="ta-only">ஸ்டார் ஃபிளெக்ஸ்</span><span class="en-only">Star Flex</span>
+      </button>
+      <button id="btnTabSunpack" data-product="sunpack">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
+        <span class="ta-only">சன்பேக்</span><span class="en-only">Sunpack</span>
       </button>
     </div>
 
@@ -277,6 +289,61 @@
       </div>
     </div>
 
+    <!-- ---------- SUNPACK calculator ---------- -->
+    <div class="frame-card hidden" id="sunpackCard">
+      <div class="frame-card-inner">
+        <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
+        <div class="ticket-head">
+          <h2><span class="ta-only">சன்பேக் கால்குலேட்டர்</span><span class="en-only">Sunpack Calculator</span></h2>
+          <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
+        </div>
+
+        <div class="dims-row">
+          <div class="dim-field">
+            <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
+            <div class="input-shell"><input type="number" id="inputSunpackWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+          </div>
+          <div class="dims-x">×</div>
+          <div class="dim-field">
+            <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
+            <div class="input-shell"><input type="number" id="inputSunpackHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+          </div>
+          <div class="warn-msg" id="warnSunpackMsg"></div>
+        </div>
+
+        <div class="rate-row">
+          <div class="rate-field">
+            <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
+            <div class="input-shell"><span class="prefix" id="currPrefixSunpack">₹</span><input type="number" id="inputSunpackRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
+          </div>
+          <div class="rate-field">
+            <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
+            <div class="input-shell readout"><span class="prefix" id="displaySunpackSqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
+          </div>
+        </div>
+
+        <div class="rate-row">
+          <div class="rate-field" style="grid-column:1 / -1;">
+            <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
+            <div class="input-shell"><input type="number" id="inputSunpackQty" inputmode="decimal" min="1" step="1" value="1"></div>
+          </div>
+        </div>
+
+        <div class="result-strip">
+          <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaSunpackText">0 × 0 = 0 sq.ft</b></div>
+          <div style="text-align:right;">
+            <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
+            <div class="amount" id="displaySunpackAmount">₹0.00</div>
+          </div>
+        </div>
+
+        <button class="add-btn" id="btnAddSunpack" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+          <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
+        </button>
+      </div>
+    </div>
+
     <!-- ---------- Customer ---------- -->
     <div class="section-title"><h3><span class="ta-only">வாடிக்கையாளர் விவரம்</span><span class="en-only">Customer Details</span></h3><span class="hint en-only">Optional</span></div>
     <div class="customer-card">
@@ -299,8 +366,9 @@
       <span class="value" id="grandTotalValue">₹0.00</span>
     </div>
 
-    <div class="action-row" style="grid-template-columns:1fr 1.4fr;">
+    <div class="action-row" style="grid-template-columns:0.8fr 0.9fr 1.3fr;">
       <button id="btnClearBill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6h14z"></path></svg><span class="ta-only">அழி</span><span class="en-only">Clear</span></button>
+      <button class="save" id="btnSaveBill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><path d="M17 21v-8H7v8M7 3v5h8"></path></svg><span class="ta-only">சேமி</span><span class="en-only">Save</span></button>
       <button class="primary" id="btnPreviewInvoice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M16 13H8m8 4H8m2-8H8"></path></svg><span class="ta-only">இன்வாய்ஸ் பார்</span><span class="en-only">Preview Invoice</span></button>
     </div>
 
@@ -308,6 +376,28 @@
       <span class="ta-only">SK Flex · உங்க கடைக்கு சொந்தமான பில்லிங் செயலி</span>
       <span class="en-only">SK Flex · professional billing for your Flex &amp; Frame shop</span>
     </footer>
+  </div>
+
+  <!-- ================= DATE HISTORY PAGE ================= -->
+  <div class="page" id="page-history">
+    <div class="section-title" style="margin-top:8px;">
+      <h3><span class="ta-only">தேதி வரலாறு</span><span class="en-only">Date History</span></h3>
+    </div>
+
+    <div id="historyDatesView">
+      <div id="historyDatesList"></div>
+    </div>
+
+    <div id="historyBillsView" class="hidden">
+      <div class="section-title" style="margin-top:0;">
+        <h3 id="historyBillsDateTitle"></h3>
+        <button class="ghost-btn" id="btnBackToDates">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+          <span class="en-only">Back</span><span class="ta-only">பின்</span>
+        </button>
+      </div>
+      <div id="historyBillsList"></div>
+    </div>
   </div>
 
   <!-- ================= SETTINGS PAGE ================= -->
@@ -382,6 +472,7 @@
           <div class="field-block"><label class="f-label">Default Vinyl Rate (per sq.ft)</label><div class="input-shell"><input type="number" id="settingVinylRate" min="0" step="0.5" style="font-size:15px;"></div></div>
           <div class="field-block"><label class="f-label">Default Star Flex Rate (per sq.ft)</label><div class="input-shell"><input type="number" id="settingStarflexRate" min="0" step="0.5" style="font-size:15px;"></div></div>
         </div>
+        <div class="field-block"><label class="f-label">Default Sunpack Rate (per sq.ft)</label><div class="input-shell"><input type="number" id="settingSunpackRate" min="0" step="0.5" style="font-size:15px;"></div></div>
         <button class="btn primary" id="btnSavePrefs">Save Defaults</button>
         <div class="saved-note" id="prefsSavedNote"></div>
       </div>
@@ -411,6 +502,10 @@
   <button class="active" data-page="billing">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M16 13H8m8 4H8"></path></svg>
     <span class="ta-only">பில்லிங்</span><span class="en-only">Billing</span>
+  </button>
+  <button data-page="history">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>
+    <span class="ta-only">தேதி வரலாறு</span><span class="en-only">History</span>
   </button>
   <button data-page="settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>

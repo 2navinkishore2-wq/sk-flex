@@ -15,13 +15,14 @@
     customers: 'skflex_customers',
     invoiceSeq: 'skflex_invoice_seq',
     lang: 'skflex_lang',
-    draft: 'skflex_draft_bill'
+    draft: 'skflex_draft_bill',
+    bills: 'skflex_bills_by_date'
   };
 
-  var DEFAULT_SETTINGS = { rate: 7.5, minSize: 2, maxSize: 100, currency: '₹', vinylRate: 25, starflexRate: 25 };
+  var DEFAULT_SETTINGS = { rate: 7.5, minSize: 2, maxSize: 100, currency: '₹', vinylRate: 25, starflexRate: 25, sunpackRate: 20 };
 
-  var PRODUCT_LABELS = { flex: 'Flex', frame: 'Frame', vinyl: 'Vinyl', starflex: 'Star Flex' };
-  var PRODUCT_TAGS = { flex: 'FLX', frame: 'FRM', vinyl: 'VIN', starflex: 'SFX' };
+  var PRODUCT_LABELS = { flex: 'Flex', frame: 'Frame', vinyl: 'Vinyl', starflex: 'Star Flex', sunpack: 'Sunpack' };
+  var PRODUCT_TAGS = { flex: 'FLX', frame: 'FRM', vinyl: 'VIN', starflex: 'SFX', sunpack: 'SUN' };
 
   var DEFAULT_COMPANY = {
     id: 'default', name: 'SK Flex', phone: '', address: '', logo: 'assets/logo.png'
@@ -89,12 +90,31 @@
   var currentInvoiceNo = null;
   var confirmCallback = null;
   var currentProduct = 'flex';
+  var billsByDate = loadJSON(LS.bills, {});   // { 'YYYY-MM-DD': [ bill, bill, ... ] }
+  var currentHistoryDate = null;              // date currently open in Date History
+  var viewingBill = null;                     // set when the invoice overlay is showing a saved bill
+
+  function todayISO() {
+    var d = new Date();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + day;
+  }
+  function formatDateDMY(iso) {
+    if (!iso) return '';
+    var p = iso.split('-');
+    if (p.length !== 3) return iso;
+    return p[2] + '-' + p[1] + '-' + p[0];
+  }
+
+  var billDate = todayISO();
 
   var draft = loadJSON(LS.draft, null);
   if (draft && Array.isArray(draft.items)) {
     items = draft.items;
     itemSeq = draft.itemSeq || (items.length + 1);
     currentInvoiceNo = draft.invoiceNo || null;
+    billDate = draft.billDate || billDate;
   }
 
   /* ---------------------------------------------------------
@@ -127,6 +147,11 @@
 
   var elBillList = $('billList'), elGrandTotal = $('grandTotal'), elGrandTotalValue = $('grandTotalValue');
   var elCustName = $('custName'), elCustPhone = $('custPhone'), elCustAddress = $('custAddress'), elCustomerNames = $('customerNames');
+  var elBillDate = $('billDate');
+  elBillDate.addEventListener('change', function () {
+    billDate = elBillDate.value || todayISO();
+    saveDraft();
+  });
 
   /* =========================================================
      Language
@@ -149,6 +174,7 @@
     document.querySelectorAll('.page').forEach(function (p) { p.classList.toggle('active', p.id === 'page-' + name); });
     document.querySelectorAll('.bottom-nav button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-page') === name); });
     if (name === 'settings') { renderCompanyList(); renderCustomerListUI(); fillPrefsForm(); }
+    if (name === 'history') { showHistoryDatesView(); }
     window.scrollTo(0, 0);
   }
   $('btnGotoSettings').addEventListener('click', function () { showPage('settings'); });
@@ -161,7 +187,8 @@
     { key: 'flex', tab: 'btnTabFlex', card: 'flexCard' },
     { key: 'frame', tab: 'btnTabFrame', card: 'frameCard' },
     { key: 'vinyl', tab: 'btnTabVinyl', card: 'vinylCard' },
-    { key: 'starflex', tab: 'btnTabStarflex', card: 'starflexCard' }
+    { key: 'starflex', tab: 'btnTabStarflex', card: 'starflexCard' },
+    { key: 'sunpack', tab: 'btnTabSunpack', card: 'sunpackCard' }
   ];
   function showProduct(p) {
     currentProduct = p;
@@ -278,12 +305,19 @@
     sqftOut: 'displayStarflexSqft', amountOut: 'displayStarflexAmount', formulaOut: 'formulaStarflexText', warnOut: 'warnStarflexMsg',
     addBtn: 'btnAddStarflex', currPrefix: 'currPrefixStarflex'
   });
-  var FLEX_TYPE_CALCS = { flex: flexCalc, vinyl: vinylCalc, starflex: starflexCalc };
+  var sunpackCalc = createFlexTypeCalculator({
+    type: 'sunpack', label: 'Sunpack',
+    width: 'inputSunpackWidth', height: 'inputSunpackHeight', rate: 'inputSunpackRate', qty: 'inputSunpackQty',
+    sqftOut: 'displaySunpackSqft', amountOut: 'displaySunpackAmount', formulaOut: 'formulaSunpackText', warnOut: 'warnSunpackMsg',
+    addBtn: 'btnAddSunpack', currPrefix: 'currPrefixSunpack'
+  });
+  var FLEX_TYPE_CALCS = { flex: flexCalc, vinyl: vinylCalc, starflex: starflexCalc, sunpack: sunpackCalc };
 
   function updateFormula() {
     flexCalc.updateFormula();
     vinylCalc.updateFormula();
     starflexCalc.updateFormula();
+    sunpackCalc.updateFormula();
   }
 
   /* =========================================================
@@ -368,7 +402,7 @@
      Bill items
   ========================================================= */
   function saveDraft() {
-    saveJSON(LS.draft, { items: items, itemSeq: itemSeq, invoiceNo: currentInvoiceNo });
+    saveJSON(LS.draft, { items: items, itemSeq: itemSeq, invoiceNo: currentInvoiceNo, billDate: billDate });
   }
   function removeItem(id) {
     items = items.filter(function (it) { return it.id !== id; });
@@ -405,7 +439,7 @@
     var html = '', total = 0;
     items.forEach(function (it) {
       total += it.amount;
-      var isFlexType = it.type === 'flex' || it.type === 'vinyl' || it.type === 'starflex';
+      var isFlexType = it.type === 'flex' || it.type === 'vinyl' || it.type === 'starflex' || it.type === 'sunpack';
       var sub = isFlexType
         ? (it.sqft ? fmtNum(it.sqft) + ' sq.ft × ' + fmtMoney(it.rate) + (it.qty && it.qty !== 1 ? ' × ' + fmtNum(it.qty) : '') : '')
         : (it.frameWidth + ' × ' + it.qty + ' @ ' + fmtMoney(it.rate));
@@ -431,6 +465,7 @@
       function () {
         items = []; itemSeq = 1; currentInvoiceNo = null;
         elCustName.value = ''; elCustPhone.value = ''; elCustAddress.value = '';
+        billDate = todayISO(); elBillDate.value = billDate;
         saveDraft(); renderBillList();
       }
     );
@@ -618,6 +653,7 @@
     $('settingMax').value = settings.maxSize;
     $('settingVinylRate').value = settings.vinylRate;
     $('settingStarflexRate').value = settings.starflexRate;
+    $('settingSunpackRate').value = settings.sunpackRate;
     $('prefsSavedNote').textContent = '';
   }
   $('btnSavePrefs').addEventListener('click', function () {
@@ -627,21 +663,25 @@
     var max = parseFloat($('settingMax').value);
     var vinylRate = parseFloat($('settingVinylRate').value);
     var starflexRate = parseFloat($('settingStarflexRate').value);
+    var sunpackRate = parseFloat($('settingSunpackRate').value);
     if (isNaN(rate) || rate <= 0 || isNaN(min) || min <= 0 || isNaN(max) || max <= min ||
-        isNaN(vinylRate) || vinylRate <= 0 || isNaN(starflexRate) || starflexRate <= 0) {
+        isNaN(vinylRate) || vinylRate <= 0 || isNaN(starflexRate) || starflexRate <= 0 ||
+        isNaN(sunpackRate) || sunpackRate <= 0) {
       $('prefsSavedNote').style.color = 'var(--danger)';
       $('prefsSavedNote').textContent = 'Please enter valid values.';
       return;
     }
-    settings = { currency: currency, rate: rate, minSize: min, maxSize: max, vinylRate: vinylRate, starflexRate: starflexRate };
+    settings = { currency: currency, rate: rate, minSize: min, maxSize: max, vinylRate: vinylRate, starflexRate: starflexRate, sunpackRate: sunpackRate };
     saveJSON(LS.settings, settings);
     elRate.value = settings.rate;
     vinylCalc.setRate(settings.vinylRate);
     starflexCalc.setRate(settings.starflexRate);
+    sunpackCalc.setRate(settings.sunpackRate);
     $('currPrefix1').textContent = settings.currency;
     $('currPrefix2').textContent = settings.currency;
     vinylCalc.setCurrency(settings.currency);
     starflexCalc.setCurrency(settings.currency);
+    sunpackCalc.setCurrency(settings.currency);
     updateFormula(); populateFrameWidths(); updateFramePrice(); renderBillList();
     $('prefsSavedNote').style.color = 'var(--green-dark)';
     $('prefsSavedNote').textContent = 'Saved!';
@@ -651,7 +691,7 @@
      Data: export / import / reset
   ========================================================= */
   $('btnExportData').addEventListener('click', function () {
-    var backup = { settings: settings, companies: companies, activeCompanyId: activeCompanyId, customers: customers, exportedAt: new Date().toISOString() };
+    var backup = { settings: settings, companies: companies, activeCompanyId: activeCompanyId, customers: customers, bills: billsByDate, exportedAt: new Date().toISOString() };
     var blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
@@ -670,14 +710,17 @@
         if (Array.isArray(data.companies)) companies = data.companies;
         if (data.activeCompanyId !== undefined) activeCompanyId = data.activeCompanyId;
         if (Array.isArray(data.customers)) customers = data.customers;
+        if (data.bills && typeof data.bills === 'object') billsByDate = data.bills;
         saveJSON(LS.settings, settings); saveJSON(LS.companies, companies);
         saveJSON(LS.activeCompany, activeCompanyId); saveJSON(LS.customers, customers);
+        saveJSON(LS.bills, billsByDate);
         applyActiveCompanyToHeader(); renderCompanyList(); renderCustomerListUI(); renderCustomerDatalist(); fillPrefsForm();
         elRate.value = settings.rate;
-        vinylCalc.setRate(settings.vinylRate); starflexCalc.setRate(settings.starflexRate);
+        vinylCalc.setRate(settings.vinylRate); starflexCalc.setRate(settings.starflexRate); sunpackCalc.setRate(settings.sunpackRate);
         $('currPrefix1').textContent = settings.currency; $('currPrefix2').textContent = settings.currency;
-        vinylCalc.setCurrency(settings.currency); starflexCalc.setCurrency(settings.currency);
+        vinylCalc.setCurrency(settings.currency); starflexCalc.setCurrency(settings.currency); sunpackCalc.setCurrency(settings.currency);
         updateFormula();
+        renderHistoryDatesList();
         alert('Backup imported successfully.');
       } catch (err) { alert('Could not read that backup file.'); }
     };
@@ -717,13 +760,28 @@
     saveDraft();
     return currentInvoiceNo;
   }
-  function buildInvoiceHTML() {
-    var company = getActiveCompany();
-    var invNo = nextInvoiceNumber();
-    var dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    var total = items.reduce(function (s, it) { return s + it.amount; }, 0);
+  // When called with no argument, builds the invoice for the current live
+  // draft (exact original behaviour). When called with a saved bill object
+  // (from Date History), builds a read-only snapshot of that bill instead —
+  // used so a saved bill can be viewed, printed and downloaded exactly as
+  // it was saved, without touching the current in-progress bill.
+  function buildInvoiceHTML(bill) {
+    var isHistorical = !!bill;
+    var company = isHistorical
+      ? (companies.find(function (c) { return c.id === bill.companyId; }) || DEFAULT_COMPANY)
+      : getActiveCompany();
+    var invNo = isHistorical ? bill.invoiceNo : nextInvoiceNumber();
+    var dateStr;
+    if (isHistorical) {
+      var bd = new Date(bill.date + 'T00:00:00');
+      dateStr = isNaN(bd.getTime()) ? formatDateDMY(bill.date) : bd.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    } else {
+      dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+    var theItems = isHistorical ? (bill.items || []) : items;
+    var total = theItems.reduce(function (s, it) { return s + it.amount; }, 0);
 
-    var rows = items.map(function (it) {
+    var rows = theItems.map(function (it) {
       return '<tr>' +
         '<td>' + esc(PRODUCT_LABELS[it.type] || it.type) + '</td>' +
         '<td>' + esc(it.desc) + '</td>' +
@@ -735,9 +793,11 @@
         '</tr>';
     }).join('');
 
-    var custName = elCustName.value.trim();
+    var custName = isHistorical ? ((bill.customer && bill.customer.name) || '') : elCustName.value.trim();
+    var custPhone = isHistorical ? ((bill.customer && bill.customer.phone) || '') : elCustPhone.value.trim();
+    var custAddress = isHistorical ? ((bill.customer && bill.customer.address) || '') : elCustAddress.value.trim();
     var custBlock = custName
-      ? '<div><b>' + esc(custName) + '</b>' + (elCustPhone.value.trim() ? '<div>' + esc(elCustPhone.value.trim()) + '</div>' : '') + (elCustAddress.value.trim() ? '<div>' + esc(elCustAddress.value.trim()) + '</div>' : '') + '</div>'
+      ? '<div><b>' + esc(custName) + '</b>' + (custPhone ? '<div>' + esc(custPhone) + '</div>' : '') + (custAddress ? '<div>' + esc(custAddress) + '</div>' : '') + '</div>'
       : '<div><b>Walk-in Customer</b></div>';
 
     return '' +
@@ -763,14 +823,148 @@
       openConfirm(isTa() ? 'பில் காலியாக இருக்கு' : 'Bill is empty', isTa() ? 'இன்வாய்ஸ் பார்க்க முதலில் ஐட்டம் சேருங்க.' : 'Add at least one item before previewing the invoice.', null, true);
       return;
     }
+    viewingBill = null;
     upsertCustomerFromBillForm();
     $('invoiceArea').innerHTML = buildInvoiceHTML();
     $('invoiceOverlay').classList.add('open');
   }
+  function viewSavedBill(bill) {
+    viewingBill = bill;
+    $('invoiceArea').innerHTML = buildInvoiceHTML(bill);
+    $('invoiceOverlay').classList.add('open');
+  }
+  function closeInvoiceOverlay() {
+    $('invoiceOverlay').classList.remove('open');
+    viewingBill = null;
+  }
   $('btnPreviewInvoice').addEventListener('click', previewInvoice);
-  $('btnCloseInvoice').addEventListener('click', function () { $('invoiceOverlay').classList.remove('open'); });
+  $('btnCloseInvoice').addEventListener('click', closeInvoiceOverlay);
   $('btnPrint').addEventListener('click', function () { window.print(); });
   $('btnDownloadPdf').addEventListener('click', downloadInvoicePdf);
+
+  /* =========================================================
+     Save Bill (date-wise storage)
+  ========================================================= */
+  function saveBill() {
+    if (items.length === 0) {
+      openConfirm(isTa() ? 'பில் காலியாக இருக்கு' : 'Bill is empty', isTa() ? 'சேமிக்க முதலில் ஐட்டம் சேருங்க.' : 'Add at least one item before saving the bill.', null, true);
+      return;
+    }
+    upsertCustomerFromBillForm();
+    var invNo = nextInvoiceNumber();
+    var dateKey = billDate || todayISO();
+    var total = items.reduce(function (s, it) { return s + it.amount; }, 0);
+    var bill = {
+      id: Date.now(),
+      invoiceNo: invNo,
+      date: dateKey,
+      companyId: activeCompanyId,
+      customer: {
+        name: elCustName.value.trim(),
+        phone: elCustPhone.value.trim(),
+        address: elCustAddress.value.trim()
+      },
+      items: JSON.parse(JSON.stringify(items)),
+      total: total,
+      savedAt: new Date().toISOString()
+    };
+    if (!billsByDate[dateKey]) billsByDate[dateKey] = [];
+    billsByDate[dateKey].push(bill);
+    saveJSON(LS.bills, billsByDate);
+    renderHistoryDatesList();
+    openConfirm(
+      isTa() ? 'பில் சேமிக்கப்பட்டது' : 'Bill Saved',
+      (isTa() ? 'இந்த தேதியில் பில் சேமிக்கப்பட்டது: ' : 'Bill has been saved under ') + formatDateDMY(dateKey),
+      null, true
+    );
+  }
+  $('btnSaveBill').addEventListener('click', saveBill);
+
+  /* =========================================================
+     Date History
+  ========================================================= */
+  function showHistoryDatesView() {
+    currentHistoryDate = null;
+    $('historyBillsView').classList.add('hidden');
+    $('historyDatesView').classList.remove('hidden');
+    renderHistoryDatesList();
+  }
+  function showHistoryBillsForDate(date) {
+    currentHistoryDate = date;
+    $('historyBillsDateTitle').textContent = formatDateDMY(date);
+    renderHistoryBillsList();
+    $('historyDatesView').classList.add('hidden');
+    $('historyBillsView').classList.remove('hidden');
+  }
+  function renderHistoryDatesList() {
+    var wrap = $('historyDatesList');
+    if (!wrap) return;
+    var dates = Object.keys(billsByDate).filter(function (d) { return billsByDate[d] && billsByDate[d].length; }).sort().reverse();
+    if (dates.length === 0) {
+      wrap.innerHTML = '<p class="sub">' + (isTa() ? 'இன்னும் பில் சேமிக்கப்படவில்லை.' : 'No bills saved yet.') + '</p>';
+      return;
+    }
+    wrap.innerHTML = dates.map(function (d) {
+      var bills = billsByDate[d];
+      var total = bills.reduce(function (s, b) { return s + (b.total || 0); }, 0);
+      var billWord = bills.length === 1 ? (isTa() ? 'பில்' : 'bill') : (isTa() ? 'பில்கள்' : 'bills');
+      return '<div class="list-row history-date-row" data-date="' + esc(d) + '" style="cursor:pointer;">' +
+        '<div class="info"><b>' + esc(formatDateDMY(d)) + '</b><span>' + bills.length + ' ' + billWord + ' · ' + fmtMoney(total) + '</span></div>' +
+        '<div class="row-actions"><button class="use view-date" data-date="' + esc(d) + '" title="View">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>' +
+        '</button></div></div>';
+    }).join('');
+    wrap.querySelectorAll('.history-date-row').forEach(function (row) {
+      row.addEventListener('click', function (e) { if (e.target.closest('button')) return; showHistoryBillsForDate(row.getAttribute('data-date')); });
+    });
+    wrap.querySelectorAll('.view-date').forEach(function (b) {
+      b.addEventListener('click', function (e) { e.stopPropagation(); showHistoryBillsForDate(b.getAttribute('data-date')); });
+    });
+  }
+  function renderHistoryBillsList() {
+    var wrap = $('historyBillsList');
+    var bills = billsByDate[currentHistoryDate] || [];
+    if (bills.length === 0) {
+      wrap.innerHTML = '<p class="sub">' + (isTa() ? 'இந்த தேதியில் பில் இல்லை.' : 'No bills for this date.') + '</p>';
+      return;
+    }
+    wrap.innerHTML = bills.map(function (b, idx) {
+      var custLabel = (b.customer && b.customer.name) ? esc(b.customer.name) : (isTa() ? 'வாக்-இன் வாடிக்கையாளர்' : 'Walk-in Customer');
+      return '<div class="list-row"><div class="info"><b>' + (isTa() ? 'பில் ' : 'Bill ') + (idx + 1) + ' · ' + esc(b.invoiceNo || '') + '</b>' +
+        '<span>' + custLabel + ' · ' + fmtMoney(b.total || 0) + '</span></div>' +
+        '<div class="row-actions">' +
+        '<button class="use view-bill" data-id="' + b.id + '" title="View"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>' +
+        '<button class="del del-bill" data-id="' + b.id + '" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6h14z"></path></svg></button>' +
+        '</div></div>';
+    }).join('');
+    wrap.querySelectorAll('.view-bill').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var bill = bills.find(function (x) { return x.id === Number(b.getAttribute('data-id')); });
+        if (bill) viewSavedBill(bill);
+      });
+    });
+    wrap.querySelectorAll('.del-bill').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = Number(b.getAttribute('data-id'));
+        openConfirm(
+          isTa() ? 'பில் அழிக்கவா?' : 'Delete this bill?',
+          isTa() ? 'இந்த பில் நிரந்தரமாக அழிக்கப்படும்.' : 'This bill will be permanently removed.',
+          function () {
+            billsByDate[currentHistoryDate] = (billsByDate[currentHistoryDate] || []).filter(function (x) { return x.id !== id; });
+            if (billsByDate[currentHistoryDate].length === 0) delete billsByDate[currentHistoryDate];
+            saveJSON(LS.bills, billsByDate);
+            if (billsByDate[currentHistoryDate]) {
+              renderHistoryBillsList();
+            } else {
+              showHistoryDatesView();
+            }
+            renderHistoryDatesList();
+          }
+        );
+      });
+    });
+  }
+  $('btnBackToDates').addEventListener('click', showHistoryDatesView);
 
   // Converts an <img> element's src to a base64 data: URL so html2canvas
   // never has to paint a cross-origin / local-file image onto its internal
@@ -875,8 +1069,11 @@
           heightLeft -= usableHeight;
         }
 
-        var company = getActiveCompany();
-        var fileName = ((company.name || 'SK-Flex') + '-Bill-' + (currentInvoiceNo || Date.now()))
+        var company = viewingBill
+          ? (companies.find(function (c) { return c.id === viewingBill.companyId; }) || DEFAULT_COMPANY)
+          : getActiveCompany();
+        var invNoForFile = viewingBill ? viewingBill.invoiceNo : currentInvoiceNo;
+        var fileName = ((company.name || 'SK-Flex') + '-Bill-' + (invNoForFile || Date.now()))
           .replace(/[^a-z0-9\-]+/gi, '_');
         pdf.save(fileName + '.pdf'); // auto-saves the file, no print dialog, no "Save as PDF" step
       })
@@ -894,10 +1091,14 @@
       });
   }
   $('btnShare').addEventListener('click', function () {
-    var company = getActiveCompany();
-    var total = items.reduce(function (s, it) { return s + it.amount; }, 0);
-    var lines = items.map(function (it) { return '• ' + it.desc + (it.frameWidth ? ' (' + it.frameWidth + ')' : '') + ' x' + (it.qty || 1) + ' — ' + fmtMoney(it.amount); });
-    var text = (company.name || 'SK Flex') + ' — Invoice ' + (currentInvoiceNo || '') + '\n' +
+    var srcItems = viewingBill ? (viewingBill.items || []) : items;
+    var company = viewingBill
+      ? (companies.find(function (c) { return c.id === viewingBill.companyId; }) || DEFAULT_COMPANY)
+      : getActiveCompany();
+    var invNoForShare = viewingBill ? viewingBill.invoiceNo : currentInvoiceNo;
+    var total = srcItems.reduce(function (s, it) { return s + it.amount; }, 0);
+    var lines = srcItems.map(function (it) { return '• ' + it.desc + (it.frameWidth ? ' (' + it.frameWidth + ')' : '') + ' x' + (it.qty || 1) + ' — ' + fmtMoney(it.amount); });
+    var text = (company.name || 'SK Flex') + ' — Invoice ' + (invNoForShare || '') + '\n' +
       lines.join('\n') + '\n\nGrand Total: ' + fmtMoney(total) + '\nThank you for your business!';
     if (navigator.share) {
       navigator.share({ title: 'Invoice — ' + (company.name || 'SK Flex'), text: text }).catch(function () {});
@@ -905,7 +1106,7 @@
       window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
     }
   });
-  $('invoiceOverlay').addEventListener('click', function (e) { if (e.target === $('invoiceOverlay')) $('invoiceOverlay').classList.remove('open'); });
+  $('invoiceOverlay').addEventListener('click', function (e) { if (e.target === $('invoiceOverlay')) closeInvoiceOverlay(); });
 
   /* =========================================================
      Language / lang toggle wiring
@@ -924,8 +1125,12 @@
     $('currPrefix2').textContent = settings.currency;
     vinylCalc.setRate(settings.vinylRate);
     starflexCalc.setRate(settings.starflexRate);
+    sunpackCalc.setRate(settings.sunpackRate);
     vinylCalc.setCurrency(settings.currency);
     starflexCalc.setCurrency(settings.currency);
+    sunpackCalc.setCurrency(settings.currency);
+
+    elBillDate.value = billDate;
 
     applyActiveCompanyToHeader();
     renderCustomerDatalist();
