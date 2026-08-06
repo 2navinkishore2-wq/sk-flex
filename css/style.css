@@ -135,7 +135,7 @@ input,select{ font-family:inherit; }
    Product tabs (FLEX / FRAME)
    ========================================================= */
 .product-tabs{
-  display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:18px;
+  display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:8px; margin-top:18px;
   background:var(--paper-2); border-radius:14px; padding:5px;
 }
 .product-tabs button{
@@ -146,6 +146,8 @@ input,select{ font-family:inherit; }
 .product-tabs button svg{ width:16px; height:16px; }
 .product-tabs button.active{ background:var(--card); color:var(--red-dark); box-shadow:var(--shadow-soft); }
 .product-tabs button[data-product="frame"].active{ color:var(--green-dark); }
+.product-tabs button[data-product="vinyl"].active{ color:var(--gold); }
+.product-tabs button[data-product="starflex"].active{ color:var(--ink); }
 
 /* =========================================================
    Frame-card — signature element
@@ -266,6 +268,8 @@ body.lang-ta .result-strip .amount-label{ text-transform:none; }
 }
 .bill-item .tag.flex{ background:var(--red); }
 .bill-item .tag.frame{ background:var(--green); }
+.bill-item .tag.vinyl{ background:var(--gold); }
+.bill-item .tag.starflex{ background:var(--ink-soft); }
 .bill-item .meta .desc{ font-family:var(--font-display); font-weight:600; font-size:14px; color:var(--ink); }
 .bill-item .meta .sub{ font-size:11.5px; color:var(--ink-faint); margin-top:2px; }
 .bill-item .amt{ font-family:var(--font-display); font-weight:700; font-size:14.5px; color:var(--green-dark); white-space:nowrap; }
@@ -452,6 +456,7 @@ footer.app-footer{ margin-top:36px; text-align:center; font-size:11px; color:var
    ========================================================= */
 @media (max-width:480px){
   .field-grid2,.customer-row:not(.addr){ grid-template-columns:1fr; }
+  .product-tabs{ grid-template-columns:1fr 1fr; }
   .action-row{ grid-template-columns:1fr 1fr; }
   .result-strip .amount{ font-size:22px; }
   .brand-text h1{ font-size:16px; }

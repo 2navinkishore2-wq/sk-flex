@@ -18,7 +18,10 @@
     draft: 'skflex_draft_bill'
   };
 
-  var DEFAULT_SETTINGS = { rate: 7.5, minSize: 2, maxSize: 100, currency: '₹' };
+  var DEFAULT_SETTINGS = { rate: 7.5, minSize: 2, maxSize: 100, currency: '₹', vinylRate: 25, starflexRate: 25 };
+
+  var PRODUCT_LABELS = { flex: 'Flex', frame: 'Frame', vinyl: 'Vinyl', starflex: 'Star Flex' };
+  var PRODUCT_TAGS = { flex: 'FLX', frame: 'FRM', vinyl: 'VIN', starflex: 'SFX' };
 
   var DEFAULT_COMPANY = {
     id: 'default', name: 'SK Flex', phone: '', address: '', logo: 'assets/logo.png'
@@ -114,7 +117,7 @@
   --------------------------------------------------------- */
   var $ = function (id) { return document.getElementById(id); };
 
-  var elWidth = $('inputWidth'), elHeight = $('inputHeight'), elRate = $('inputRate');
+  var elWidth = $('inputWidth'), elHeight = $('inputHeight'), elRate = $('inputRate'), elQty = $('inputFlexQty');
   var elSqft = $('displaySqft'), elAmount = $('displayAmount'), elFormula = $('formulaText'), elWarn = $('warnMsg');
   var elAddFlex = $('btnAddFlex');
 
@@ -154,15 +157,22 @@
     b.addEventListener('click', function () { showPage(b.getAttribute('data-page')); });
   });
 
+  var PRODUCT_TABS = [
+    { key: 'flex', tab: 'btnTabFlex', card: 'flexCard' },
+    { key: 'frame', tab: 'btnTabFrame', card: 'frameCard' },
+    { key: 'vinyl', tab: 'btnTabVinyl', card: 'vinylCard' },
+    { key: 'starflex', tab: 'btnTabStarflex', card: 'starflexCard' }
+  ];
   function showProduct(p) {
     currentProduct = p;
-    $('btnTabFlex').classList.toggle('active', p === 'flex');
-    $('btnTabFrame').classList.toggle('active', p === 'frame');
-    $('flexCard').classList.toggle('hidden', p !== 'flex');
-    $('frameCard').classList.toggle('hidden', p !== 'frame');
+    PRODUCT_TABS.forEach(function (t) {
+      $(t.tab).classList.toggle('active', p === t.key);
+      $(t.card).classList.toggle('hidden', p !== t.key);
+    });
   }
-  $('btnTabFlex').addEventListener('click', function () { showProduct('flex'); });
-  $('btnTabFrame').addEventListener('click', function () { showProduct('frame'); });
+  PRODUCT_TABS.forEach(function (t) {
+    $(t.tab).addEventListener('click', function () { showProduct(t.key); });
+  });
 
   var settingsTabs = document.querySelectorAll('.settings-tabs button');
   settingsTabs.forEach(function (btn) {
@@ -177,10 +187,6 @@
   /* =========================================================
      FLEX calculator
   ========================================================= */
-  function currentFlexInputs() {
-    var w = parseFloat(elWidth.value), h = parseFloat(elHeight.value), r = parseFloat(elRate.value);
-    return { w: isNaN(w) ? 0 : w, h: isNaN(h) ? 0 : h, r: isNaN(r) ? 0 : r };
-  }
   function validateSize(w, h) {
     if (w === 0 && h === 0) return '';
     if ((w > 0 && w < settings.minSize) || (h > 0 && h < settings.minSize)) {
@@ -191,34 +197,94 @@
     }
     return '';
   }
+
+  // Shared calculator logic for the Flex-style sections (Flex, Vinyl, Star
+  // Flex): Width × Height × Rate × Quantity. Each instance keeps its own
+  // DOM elements and state via closures; the math and validation match the
+  // original Flex calculator exactly, extended with the Quantity multiplier.
+  function createFlexTypeCalculator(cfg) {
+    var elW = $(cfg.width), elH = $(cfg.height), elR = $(cfg.rate), elQ = $(cfg.qty);
+    var elSqftOut = $(cfg.sqftOut), elAmountOut = $(cfg.amountOut), elFormulaOut = $(cfg.formulaOut);
+    var elWarnOut = $(cfg.warnOut), elAddBtn = $(cfg.addBtn), elCurrPrefix = cfg.currPrefix ? $(cfg.currPrefix) : null;
+
+    function currentInputs() {
+      var w = parseFloat(elW.value), h = parseFloat(elH.value), r = parseFloat(elR.value), q = parseFloat(elQ.value);
+      return {
+        w: isNaN(w) ? 0 : w,
+        h: isNaN(h) ? 0 : h,
+        r: isNaN(r) ? 0 : r,
+        q: (isNaN(q) || q <= 0) ? 1 : q
+      };
+    }
+    function updateFormula() {
+      var inp = currentInputs();
+      var sqft = inp.w * inp.h;
+      var amount = sqft * inp.r * inp.q;
+      elSqftOut.textContent = fmtNum(sqft);
+      elAmountOut.textContent = fmtMoney(amount);
+      elFormulaOut.textContent = fmtNum(inp.w) + ' × ' + fmtNum(inp.h) + ' = ' + fmtNum(sqft) + ' sq.ft' + (inp.q !== 1 ? ' × ' + fmtNum(inp.q) + ' qty' : '');
+      var warning = validateSize(inp.w, inp.h);
+      elWarnOut.textContent = warning;
+      elAddBtn.disabled = !(inp.w > 0 && inp.h > 0 && inp.r > 0 && !warning);
+      return { inp: inp, sqft: sqft, amount: amount, warning: warning };
+    }
+    function addItem() {
+      var state = updateFormula();
+      var inp = state.inp;
+      if (inp.w <= 0 || inp.h <= 0 || inp.r <= 0 || state.warning) return;
+      items.push({
+        id: itemSeq++, type: cfg.type,
+        desc: fmtNum(inp.w) + ' × ' + fmtNum(inp.h) + ' ft ' + cfg.label,
+        size: fmtNum(inp.w) + ' × ' + fmtNum(inp.h) + ' ft', frameWidth: '',
+        qty: inp.q, rate: inp.r, sqft: state.sqft, amount: state.amount
+      });
+      saveDraft(); renderBillList();
+      elW.value = ''; elH.value = ''; elQ.value = 1;
+      updateFormula(); elW.focus();
+    }
+    [elW, elH, elR, elQ].forEach(function (el) { el.addEventListener('input', updateFormula); });
+    elAddBtn.addEventListener('click', addItem);
+
+    return {
+      updateFormula: updateFormula,
+      setRate: function (v) { elR.value = v; },
+      setCurrency: function (c) { if (elCurrPrefix) elCurrPrefix.textContent = c; },
+      fillFromItem: function (it) {
+        var parts = it.size.split('×');
+        elW.value = parseFloat(parts[0]) || '';
+        elH.value = parseFloat(parts[1]) || '';
+        elR.value = it.rate;
+        elQ.value = it.qty || 1;
+        updateFormula();
+      }
+    };
+  }
+
+  var flexCalc = createFlexTypeCalculator({
+    type: 'flex', label: 'Flex',
+    width: 'inputWidth', height: 'inputHeight', rate: 'inputRate', qty: 'inputFlexQty',
+    sqftOut: 'displaySqft', amountOut: 'displayAmount', formulaOut: 'formulaText', warnOut: 'warnMsg',
+    addBtn: 'btnAddFlex', currPrefix: 'currPrefix1'
+  });
+  var vinylCalc = createFlexTypeCalculator({
+    type: 'vinyl', label: 'Vinyl',
+    width: 'inputVinylWidth', height: 'inputVinylHeight', rate: 'inputVinylRate', qty: 'inputVinylQty',
+    sqftOut: 'displayVinylSqft', amountOut: 'displayVinylAmount', formulaOut: 'formulaVinylText', warnOut: 'warnVinylMsg',
+    addBtn: 'btnAddVinyl', currPrefix: 'currPrefixVinyl'
+  });
+  var starflexCalc = createFlexTypeCalculator({
+    type: 'starflex', label: 'Star Flex',
+    width: 'inputStarflexWidth', height: 'inputStarflexHeight', rate: 'inputStarflexRate', qty: 'inputStarflexQty',
+    sqftOut: 'displayStarflexSqft', amountOut: 'displayStarflexAmount', formulaOut: 'formulaStarflexText', warnOut: 'warnStarflexMsg',
+    addBtn: 'btnAddStarflex', currPrefix: 'currPrefixStarflex'
+  });
+  var FLEX_TYPE_CALCS = { flex: flexCalc, vinyl: vinylCalc, starflex: starflexCalc };
+
   function updateFormula() {
-    var inp = currentFlexInputs();
-    var sqft = inp.w * inp.h;
-    var amount = sqft * inp.r;
-    elSqft.textContent = fmtNum(sqft);
-    elAmount.textContent = fmtMoney(amount);
-    elFormula.textContent = fmtNum(inp.w) + ' × ' + fmtNum(inp.h) + ' = ' + fmtNum(sqft) + ' sq.ft';
-    var warning = validateSize(inp.w, inp.h);
-    elWarn.textContent = warning;
-    elAddFlex.disabled = !(inp.w > 0 && inp.h > 0 && inp.r > 0 && !warning);
+    flexCalc.updateFormula();
+    vinylCalc.updateFormula();
+    starflexCalc.updateFormula();
   }
-  function addFlexItem() {
-    var inp = currentFlexInputs();
-    if (inp.w <= 0 || inp.h <= 0 || inp.r <= 0 || validateSize(inp.w, inp.h)) return;
-    var sqft = inp.w * inp.h;
-    var amount = sqft * inp.r;
-    items.push({
-      id: itemSeq++, type: 'flex',
-      desc: fmtNum(inp.w) + ' × ' + fmtNum(inp.h) + ' ft Flex',
-      size: fmtNum(inp.w) + ' × ' + fmtNum(inp.h) + ' ft', frameWidth: '',
-      qty: 1, rate: inp.r, sqft: sqft, amount: amount
-    });
-    saveDraft(); renderBillList();
-    elWidth.value = ''; elHeight.value = '';
-    updateFormula(); elWidth.focus();
-  }
-  [elWidth, elHeight, elRate].forEach(function (el) { el.addEventListener('input', updateFormula); });
-  elAddFlex.addEventListener('click', addFlexItem);
 
   /* =========================================================
      FRAME calculator
@@ -313,13 +379,9 @@
     if (!it) return;
     items = items.filter(function (x) { return x.id !== id; });
     saveDraft();
-    if (it.type === 'flex') {
-      showProduct('flex');
-      var parts = it.size.split('×');
-      elWidth.value = parseFloat(parts[0]) || '';
-      elHeight.value = parseFloat(parts[1]) || '';
-      elRate.value = it.rate;
-      updateFormula();
+    if (FLEX_TYPE_CALCS[it.type]) {
+      showProduct(it.type);
+      FLEX_TYPE_CALCS[it.type].fillFromItem(it);
     } else {
       showProduct('frame');
       elSizeSel.value = it.size.replace(' in', '');
@@ -343,11 +405,12 @@
     var html = '', total = 0;
     items.forEach(function (it) {
       total += it.amount;
-      var sub = it.type === 'flex'
-        ? (it.sqft ? fmtNum(it.sqft) + ' sq.ft × ' + fmtMoney(it.rate) : '')
+      var isFlexType = it.type === 'flex' || it.type === 'vinyl' || it.type === 'starflex';
+      var sub = isFlexType
+        ? (it.sqft ? fmtNum(it.sqft) + ' sq.ft × ' + fmtMoney(it.rate) + (it.qty && it.qty !== 1 ? ' × ' + fmtNum(it.qty) : '') : '')
         : (it.frameWidth + ' × ' + it.qty + ' @ ' + fmtMoney(it.rate));
       html += '<div class="bill-item">' +
-        '<div class="tag ' + it.type + '">' + (it.type === 'flex' ? 'FLX' : 'FRM') + '</div>' +
+        '<div class="tag ' + it.type + '">' + (PRODUCT_TAGS[it.type] || it.type.toUpperCase()) + '</div>' +
         '<div class="meta"><div class="desc">' + esc(it.desc) + '</div><div class="sub">' + esc(sub) + '</div></div>' +
         '<div class="amt">' + fmtMoney(it.amount) + '</div>' +
         '<div class="item-actions">' +
@@ -553,6 +616,8 @@
     $('settingRate').value = settings.rate;
     $('settingMin').value = settings.minSize;
     $('settingMax').value = settings.maxSize;
+    $('settingVinylRate').value = settings.vinylRate;
+    $('settingStarflexRate').value = settings.starflexRate;
     $('prefsSavedNote').textContent = '';
   }
   $('btnSavePrefs').addEventListener('click', function () {
@@ -560,16 +625,23 @@
     var rate = parseFloat($('settingRate').value);
     var min = parseFloat($('settingMin').value);
     var max = parseFloat($('settingMax').value);
-    if (isNaN(rate) || rate <= 0 || isNaN(min) || min <= 0 || isNaN(max) || max <= min) {
+    var vinylRate = parseFloat($('settingVinylRate').value);
+    var starflexRate = parseFloat($('settingStarflexRate').value);
+    if (isNaN(rate) || rate <= 0 || isNaN(min) || min <= 0 || isNaN(max) || max <= min ||
+        isNaN(vinylRate) || vinylRate <= 0 || isNaN(starflexRate) || starflexRate <= 0) {
       $('prefsSavedNote').style.color = 'var(--danger)';
       $('prefsSavedNote').textContent = 'Please enter valid values.';
       return;
     }
-    settings = { currency: currency, rate: rate, minSize: min, maxSize: max };
+    settings = { currency: currency, rate: rate, minSize: min, maxSize: max, vinylRate: vinylRate, starflexRate: starflexRate };
     saveJSON(LS.settings, settings);
     elRate.value = settings.rate;
+    vinylCalc.setRate(settings.vinylRate);
+    starflexCalc.setRate(settings.starflexRate);
     $('currPrefix1').textContent = settings.currency;
     $('currPrefix2').textContent = settings.currency;
+    vinylCalc.setCurrency(settings.currency);
+    starflexCalc.setCurrency(settings.currency);
     updateFormula(); populateFrameWidths(); updateFramePrice(); renderBillList();
     $('prefsSavedNote').style.color = 'var(--green-dark)';
     $('prefsSavedNote').textContent = 'Saved!';
@@ -601,7 +673,11 @@
         saveJSON(LS.settings, settings); saveJSON(LS.companies, companies);
         saveJSON(LS.activeCompany, activeCompanyId); saveJSON(LS.customers, customers);
         applyActiveCompanyToHeader(); renderCompanyList(); renderCustomerListUI(); renderCustomerDatalist(); fillPrefsForm();
-        elRate.value = settings.rate; updateFormula();
+        elRate.value = settings.rate;
+        vinylCalc.setRate(settings.vinylRate); starflexCalc.setRate(settings.starflexRate);
+        $('currPrefix1').textContent = settings.currency; $('currPrefix2').textContent = settings.currency;
+        vinylCalc.setCurrency(settings.currency); starflexCalc.setCurrency(settings.currency);
+        updateFormula();
         alert('Backup imported successfully.');
       } catch (err) { alert('Could not read that backup file.'); }
     };
@@ -649,7 +725,7 @@
 
     var rows = items.map(function (it) {
       return '<tr>' +
-        '<td>' + (it.type === 'flex' ? 'Flex' : 'Frame') + '</td>' +
+        '<td>' + esc(PRODUCT_LABELS[it.type] || it.type) + '</td>' +
         '<td>' + esc(it.desc) + '</td>' +
         '<td>' + esc(it.size) + '</td>' +
         '<td>' + esc(it.frameWidth || '—') + '</td>' +
@@ -846,6 +922,10 @@
     elRate.value = settings.rate;
     $('currPrefix1').textContent = settings.currency;
     $('currPrefix2').textContent = settings.currency;
+    vinylCalc.setRate(settings.vinylRate);
+    starflexCalc.setRate(settings.starflexRate);
+    vinylCalc.setCurrency(settings.currency);
+    starflexCalc.setCurrency(settings.currency);
 
     applyActiveCompanyToHeader();
     renderCustomerDatalist();

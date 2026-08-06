@@ -59,6 +59,14 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><rect x="7" y="7" width="10" height="10" rx="1"></rect></svg>
         <span class="ta-only">ஃபிரேம்</span><span class="en-only">Frame</span>
       </button>
+      <button id="btnTabVinyl" data-product="vinyl">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
+        <span class="ta-only">வினைல்</span><span class="en-only">Vinyl</span>
+      </button>
+      <button id="btnTabStarflex" data-product="starflex">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
+        <span class="ta-only">ஸ்டார் ஃபிளெக்ஸ்</span><span class="en-only">Star Flex</span>
+      </button>
     </div>
 
     <!-- ---------- FLEX calculator ---------- -->
@@ -91,6 +99,13 @@
           <div class="rate-field">
             <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
             <div class="input-shell readout"><span class="prefix" id="displaySqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
+          </div>
+        </div>
+
+        <div class="rate-row">
+          <div class="rate-field" style="grid-column:1 / -1;">
+            <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
+            <div class="input-shell"><input type="number" id="inputFlexQty" inputmode="decimal" min="1" step="1" value="1"></div>
           </div>
         </div>
 
@@ -146,6 +161,116 @@
         </div>
 
         <button class="add-btn frame-btn" id="btnAddFrame" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+          <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ---------- VINYL calculator ---------- -->
+    <div class="frame-card hidden" id="vinylCard">
+      <div class="frame-card-inner">
+        <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
+        <div class="ticket-head">
+          <h2><span class="ta-only">வினைல் கால்குலேட்டர்</span><span class="en-only">Vinyl Calculator</span></h2>
+          <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
+        </div>
+
+        <div class="dims-row">
+          <div class="dim-field">
+            <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
+            <div class="input-shell"><input type="number" id="inputVinylWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+          </div>
+          <div class="dims-x">×</div>
+          <div class="dim-field">
+            <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
+            <div class="input-shell"><input type="number" id="inputVinylHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+          </div>
+          <div class="warn-msg" id="warnVinylMsg"></div>
+        </div>
+
+        <div class="rate-row">
+          <div class="rate-field">
+            <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
+            <div class="input-shell"><span class="prefix" id="currPrefixVinyl">₹</span><input type="number" id="inputVinylRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
+          </div>
+          <div class="rate-field">
+            <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
+            <div class="input-shell readout"><span class="prefix" id="displayVinylSqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
+          </div>
+        </div>
+
+        <div class="rate-row">
+          <div class="rate-field" style="grid-column:1 / -1;">
+            <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
+            <div class="input-shell"><input type="number" id="inputVinylQty" inputmode="decimal" min="1" step="1" value="1"></div>
+          </div>
+        </div>
+
+        <div class="result-strip">
+          <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaVinylText">0 × 0 = 0 sq.ft</b></div>
+          <div style="text-align:right;">
+            <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
+            <div class="amount" id="displayVinylAmount">₹0.00</div>
+          </div>
+        </div>
+
+        <button class="add-btn" id="btnAddVinyl" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+          <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ---------- STAR FLEX calculator ---------- -->
+    <div class="frame-card hidden" id="starflexCard">
+      <div class="frame-card-inner">
+        <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
+        <div class="ticket-head">
+          <h2><span class="ta-only">ஸ்டார் ஃபிளெக்ஸ் கால்குலேட்டர்</span><span class="en-only">Star Flex Calculator</span></h2>
+          <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
+        </div>
+
+        <div class="dims-row">
+          <div class="dim-field">
+            <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
+            <div class="input-shell"><input type="number" id="inputStarflexWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+          </div>
+          <div class="dims-x">×</div>
+          <div class="dim-field">
+            <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
+            <div class="input-shell"><input type="number" id="inputStarflexHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+          </div>
+          <div class="warn-msg" id="warnStarflexMsg"></div>
+        </div>
+
+        <div class="rate-row">
+          <div class="rate-field">
+            <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
+            <div class="input-shell"><span class="prefix" id="currPrefixStarflex">₹</span><input type="number" id="inputStarflexRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
+          </div>
+          <div class="rate-field">
+            <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
+            <div class="input-shell readout"><span class="prefix" id="displayStarflexSqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
+          </div>
+        </div>
+
+        <div class="rate-row">
+          <div class="rate-field" style="grid-column:1 / -1;">
+            <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
+            <div class="input-shell"><input type="number" id="inputStarflexQty" inputmode="decimal" min="1" step="1" value="1"></div>
+          </div>
+        </div>
+
+        <div class="result-strip">
+          <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaStarflexText">0 × 0 = 0 sq.ft</b></div>
+          <div style="text-align:right;">
+            <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
+            <div class="amount" id="displayStarflexAmount">₹0.00</div>
+          </div>
+        </div>
+
+        <button class="add-btn" id="btnAddStarflex" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
           <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
         </button>
@@ -252,6 +377,10 @@
           <div class="field-block"><label class="f-label">Default Flex Rate (per sq.ft)</label><div class="input-shell"><input type="number" id="settingRate" min="0" step="0.5" style="font-size:15px;"></div></div>
           <div class="field-block"><label class="f-label">Minimum Size (ft)</label><div class="input-shell"><input type="number" id="settingMin" min="0" step="0.5" style="font-size:15px;"></div></div>
           <div class="field-block"><label class="f-label">Maximum Size (ft)</label><div class="input-shell"><input type="number" id="settingMax" min="1" step="1" style="font-size:15px;"></div></div>
+        </div>
+        <div class="field-grid2">
+          <div class="field-block"><label class="f-label">Default Vinyl Rate (per sq.ft)</label><div class="input-shell"><input type="number" id="settingVinylRate" min="0" step="0.5" style="font-size:15px;"></div></div>
+          <div class="field-block"><label class="f-label">Default Star Flex Rate (per sq.ft)</label><div class="input-shell"><input type="number" id="settingStarflexRate" min="0" step="0.5" style="font-size:15px;"></div></div>
         </div>
         <button class="btn primary" id="btnSavePrefs">Save Defaults</button>
         <div class="saved-note" id="prefsSavedNote"></div>
