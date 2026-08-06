@@ -173,7 +173,7 @@
   function showPage(name) {
     document.querySelectorAll('.page').forEach(function (p) { p.classList.toggle('active', p.id === 'page-' + name); });
     document.querySelectorAll('.bottom-nav button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-page') === name); });
-    if (name === 'settings') { renderCompanyList(); renderCustomerListUI(); fillPrefsForm(); }
+    if (name === 'settings') { renderCompanyList(); renderCustomerListUI(); fillPrefsForm(); renderSettingsBillsList(); }
     if (name === 'history') { showHistoryDatesView(); }
     window.scrollTo(0, 0);
   }
@@ -721,6 +721,7 @@
         vinylCalc.setCurrency(settings.currency); starflexCalc.setCurrency(settings.currency); sunpackCalc.setCurrency(settings.currency);
         updateFormula();
         renderHistoryDatesList();
+        renderSettingsBillsList();
         alert('Backup imported successfully.');
       } catch (err) { alert('Could not read that backup file.'); }
     };
@@ -771,13 +772,14 @@
       ? (companies.find(function (c) { return c.id === bill.companyId; }) || DEFAULT_COMPANY)
       : getActiveCompany();
     var invNo = isHistorical ? bill.invoiceNo : nextInvoiceNumber();
-    var dateStr;
-    if (isHistorical) {
-      var bd = new Date(bill.date + 'T00:00:00');
-      dateStr = isNaN(bd.getTime()) ? formatDateDMY(bill.date) : bd.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    } else {
-      dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    }
+    // Invoice date always reflects the selected Bill Date — for a saved
+    // bill that's the date it was stored under; for the live draft it's
+    // whatever is currently chosen in the Bill Date field (defaults to
+    // today, but must never silently fall back to "today" once the user
+    // has picked a different date).
+    var effectiveDateISO = isHistorical ? bill.date : (billDate || todayISO());
+    var edt = new Date(effectiveDateISO + 'T00:00:00');
+    var dateStr = isNaN(edt.getTime()) ? formatDateDMY(effectiveDateISO) : edt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     var theItems = isHistorical ? (bill.items || []) : items;
     var total = theItems.reduce(function (s, it) { return s + it.amount; }, 0);
 
@@ -868,10 +870,27 @@
       total: total,
       savedAt: new Date().toISOString()
     };
+    // Use the currently selected date strictly as its own storage key —
+    // each date's array is independent and only ever appended to under
+    // its own key, so bills saved under one date can never end up mixed
+    // into another date's list.
     if (!billsByDate[dateKey]) billsByDate[dateKey] = [];
     billsByDate[dateKey].push(bill);
     saveJSON(LS.bills, billsByDate);
     renderHistoryDatesList();
+    renderSettingsBillsList();
+
+    // Bug fix: the current bill's items/customer were never cleared after
+    // saving, so if the user then picked a different date and added new
+    // items, those leftover items were saved again into the new date's
+    // bill too — making bills from different dates appear "mixed". Start
+    // a clean, empty bill immediately after a successful save (the Bill
+    // Date field itself is left exactly as the user set it).
+    items = []; itemSeq = 1; currentInvoiceNo = null;
+    elCustName.value = ''; elCustPhone.value = ''; elCustAddress.value = '';
+    saveDraft();
+    renderBillList();
+
     openConfirm(
       isTa() ? 'பில் சேமிக்கப்பட்டது' : 'Bill Saved',
       (isTa() ? 'இந்த தேதியில் பில் சேமிக்கப்பட்டது: ' : 'Bill has been saved under ') + formatDateDMY(dateKey),
@@ -959,12 +978,46 @@
               showHistoryDatesView();
             }
             renderHistoryDatesList();
+            renderSettingsBillsList();
           }
         );
       });
     });
   }
   $('btnBackToDates').addEventListener('click', showHistoryDatesView);
+
+  /* =========================================================
+     Settings → Saved Bills (simple list, opens the same
+     Date History view when a date is tapped)
+  ========================================================= */
+  function openSavedBillsForDateFromSettings(date) {
+    showPage('history');
+    showHistoryBillsForDate(date);
+  }
+  function renderSettingsBillsList() {
+    var wrap = $('settingsBillsList');
+    if (!wrap) return;
+    var dates = Object.keys(billsByDate).filter(function (d) { return billsByDate[d] && billsByDate[d].length; }).sort().reverse();
+    if (dates.length === 0) {
+      wrap.innerHTML = '<p class="sub">No bills saved yet.</p>';
+      return;
+    }
+    wrap.innerHTML = dates.map(function (d) {
+      var bills = billsByDate[d];
+      var billWord = bills.length === 1 ? 'Bill' : 'Bills';
+      return '<div class="list-row settings-bill-date-row" data-date="' + esc(d) + '" style="cursor:pointer;">' +
+        '<div class="info"><b>' + esc(formatDateDMY(d)) + '</b><span>(' + bills.length + ' ' + billWord + ')</span></div>' +
+        '<div class="row-actions"><button class="use view-settings-date" data-date="' + esc(d) + '" title="View">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>' +
+        '</button></div></div>';
+    }).join('');
+    wrap.querySelectorAll('.settings-bill-date-row').forEach(function (row) {
+      row.addEventListener('click', function (e) { if (e.target.closest('button')) return; openSavedBillsForDateFromSettings(row.getAttribute('data-date')); });
+    });
+    wrap.querySelectorAll('.view-settings-date').forEach(function (b) {
+      b.addEventListener('click', function (e) { e.stopPropagation(); openSavedBillsForDateFromSettings(b.getAttribute('data-date')); });
+    });
+  }
 
   // Converts an <img> element's src to a base64 data: URL so html2canvas
   // never has to paint a cross-origin / local-file image onto its internal
@@ -1090,6 +1143,68 @@
         label.textContent = originalLabel;
       });
   }
+  // Download JPEG — same rendering approach as Download PDF (image inlining
+  // + html2canvas), but saves the rendered canvas directly as a .jpg file
+  // instead of embedding it into a PDF. Kept fully separate from
+  // downloadInvoicePdf so the PDF button's behaviour is untouched.
+  function downloadInvoiceJpeg() {
+    var btn = $('btnDownloadJpeg'), label = $('btnDownloadJpegLabel');
+    var originalLabel = label.textContent;
+
+    if (typeof window.html2canvas !== 'function') {
+      var e1 = new Error('html2canvas failed to load — window.html2canvas is not a function.');
+      console.error(e1);
+      openConfirm(isTa() ? 'பிழை' : 'Error', e1.message, null, true);
+      return;
+    }
+
+    var area = $('invoiceArea');
+    if (!area || !area.querySelector('.inv-head')) {
+      var e3 = new Error('Invoice element (#invoiceArea) was not found or is empty.');
+      console.error(e3);
+      openConfirm(isTa() ? 'பிழை' : 'Error', e3.message, null, true);
+      return;
+    }
+
+    btn.disabled = true;
+    label.textContent = 'Generating…';
+
+    var images = Array.prototype.slice.call(area.querySelectorAll('img'));
+    var originalSrcs = images.map(function (img) { return img.src; });
+
+    Promise.all(images.map(inlineImageAsDataURL))
+      .then(function () {
+        return window.html2canvas(area, { scale: 2, backgroundColor: '#ffffff', useCORS: true }); // html2canvas scale: 2
+      })
+      .then(function (canvas) {
+        var imgData = canvas.toDataURL('image/jpeg', 1.0); // high-quality JPEG
+
+        var company = viewingBill
+          ? (companies.find(function (c) { return c.id === viewingBill.companyId; }) || DEFAULT_COMPANY)
+          : getActiveCompany();
+        var invNoForFile = viewingBill ? viewingBill.invoiceNo : currentInvoiceNo;
+        var fileName = ((company.name || 'SK-Flex') + '-Bill-' + (invNoForFile || Date.now()))
+          .replace(/[^a-z0-9\-]+/gi, '_');
+
+        var a = document.createElement('a');
+        a.href = imgData;
+        a.download = fileName + '.jpg';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      })
+      .catch(function (err) {
+        console.error(err);
+        var msg = (err && err.message) ? err.message : String(err);
+        openConfirm(isTa() ? 'பிழை' : 'Error', msg, null, true);
+      })
+      .finally(function () {
+        images.forEach(function (img, i) { img.src = originalSrcs[i]; });
+        btn.disabled = false;
+        label.textContent = originalLabel;
+      });
+  }
+  $('btnDownloadJpeg').addEventListener('click', downloadInvoiceJpeg);
   $('btnShare').addEventListener('click', function () {
     var srcItems = viewingBill ? (viewingBill.items || []) : items;
     var company = viewingBill
