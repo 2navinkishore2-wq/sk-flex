@@ -1,0 +1,60 @@
+{
+  "name": "sk-flex",
+  "version": "1.0.0",
+  "description": "SK Flex - Professional billing application for Flex & Frame shops",
+  "main": "main.js",
+  "author": "SK Flex",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "build:portable": "electron-builder --win portable",
+    "build:installer": "electron-builder --win nsis",
+    "postinstall": "node scripts/download-assets.js"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "png-to-ico": "^2.1.8",
+    "sharp": "^0.35.3"
+  },
+  "dependencies": {
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1"
+  },
+  "build": {
+    "appId": "com.skflex.billing",
+    "productName": "SK Flex Billing",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "offline-policy.js",
+      "cloud-config.json",
+      "index.html",
+      "css/**/*",
+      "js/**/*",
+      "data/**/*",
+      "assets/**/*",
+      "vendor/**/*",
+      "fonts/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SK Flex Billing"
+    }
+  }
+}

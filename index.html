@@ -5,21 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>SK Flex — Billing</title>
 <link rel="icon" type="image/png" href="assets/logo.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=Noto+Sans+Tamil:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
-<!-- PDF generation (invoice → canvas → PDF), loaded from CDN. The app still
-     works fully without internet access — Download PDF falls back to the
-     browser's native print dialog if these fail to load. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- Local dependencies for offline use (downloaded by scripts/download-assets.js) -->
+<script src="vendor/html2canvas.min.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
 </head>
 <body class="lang-en">
 
 <!-- ================= Loading screen ================= -->
 <div id="loadingScreen">
   <img src="assets/logo.png" alt="SK Flex">
+  <div class="load-title">SK&nbsp;Flex</div>
   <div class="load-bar"><span></span></div>
 </div>
 
@@ -34,6 +30,29 @@
       </div>
     </div>
     <div class="appbar-actions">
+      <div class="account-chip" id="accountChip" hidden>
+        <button class="account-chip-btn" id="accountChipBtn" title="Account &amp; sync">
+          <img id="accountAvatar" class="account-avatar" alt="" hidden>
+          <span id="accountChipInitials" class="account-avatar account-avatar-initials" hidden></span>
+          <span class="account-chip-name" id="accountChipName">Account</span>
+          <span class="account-chip-dot" id="accountChipDot" title="Sync status"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+        </button>
+        <div class="account-menu" id="accountMenu" hidden>
+          <div class="account-menu-head">
+            <img id="menuAvatar" class="account-avatar" alt="" hidden>
+            <span id="menuInitials" class="account-avatar account-avatar-initials" hidden></span>
+            <div>
+              <div class="account-menu-name" id="menuName"></div>
+              <div class="account-menu-email" id="menuEmail"></div>
+            </div>
+          </div>
+          <div class="account-menu-status" id="accountMenuStatus"></div>
+          <button class="account-menu-item" id="btnMenuSyncNow">Sync now</button>
+          <button class="account-menu-item" id="btnMenuOpenCloud">Cloud settings</button>
+          <button class="account-menu-item account-menu-item-danger" id="btnMenuSignOut">Sign out</button>
+        </div>
+      </div>
       <div class="lang-toggle">
         <button id="btnLangEn" class="active">EN</button>
         <button id="btnLangTa">தமிழ்</button>
@@ -45,343 +64,463 @@
   </div>
 </div>
 
+<!-- ================= Desktop top navigation ================= -->
+<nav class="top-nav" aria-label="Primary">
+  <div class="top-nav-inner">
+    <button data-page="billing" class="active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M16 13H8m8 4H8"></path></svg>
+      <span class="ta-only">பில்லிங்</span><span class="en-only">Dashboard</span>
+    </button>
+    <button data-page="history">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>
+      <span class="ta-only">தேதி வரலாறு</span><span class="en-only">Date History</span>
+    </button>
+    <button data-page="ledger">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+      <span class="ta-only">கணக்கு</span><span class="en-only">Customer Accounts</span>
+    </button>
+    <button data-page="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      <span class="ta-only">செட்டிங்ஸ்</span><span class="en-only">Settings</span>
+    </button>
+  </div>
+</nav>
+
 <div class="wrap">
 
-  <!-- ================= BILLING PAGE ================= -->
+  <!-- ================= BILLING PAGE (Dashboard) ================= -->
   <div class="page active" id="page-billing">
+    <div class="billing-grid">
 
-    <!-- ---------- Bill Date ---------- -->
-    <div class="customer-card" id="billDateCard">
-      <div class="field-block" style="margin-bottom:0;">
-        <label class="f-label"><span class="ta-only">பில் தேதி</span><span class="en-only">Bill Date</span></label>
-        <div class="input-shell"><input type="date" id="billDate"></div>
+      <!-- ================= Calculator column ================= -->
+      <div class="calc-column">
+
+        <!-- ---------- Bill Date ---------- -->
+        <div class="customer-card bill-date-card" id="billDateCard">
+          <div class="field-block" style="margin-bottom:0;">
+            <label class="f-label"><span class="ta-only">பில் தேதி</span><span class="en-only">Bill Date</span></label>
+            <div class="input-shell"><input type="date" id="billDate"></div>
+          </div>
+        </div>
+
+        <div class="product-tabs" role="tablist">
+          <button id="btnTabFlex" data-product="flex" class="active" role="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
+            <span class="ta-only">ஃபிளெக்ஸ்</span><span class="en-only">Flex</span>
+          </button>
+          <button id="btnTabFrame" data-product="frame" role="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><rect x="7" y="7" width="10" height="10" rx="1"></rect></svg>
+            <span class="ta-only">ஃபிரேம்</span><span class="en-only">Frame</span>
+          </button>
+          <button id="btnTabVinyl" data-product="vinyl" role="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
+            <span class="ta-only">வினைல்</span><span class="en-only">Vinyl</span>
+          </button>
+          <button id="btnTabStarflex" data-product="starflex" role="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
+            <span class="ta-only">ஸ்டார் ஃபிளெக்ஸ்</span><span class="en-only">Star Flex</span>
+          </button>
+          <button id="btnTabSunpack" data-product="sunpack" role="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
+            <span class="ta-only">சன்பேக்</span><span class="en-only">Sunpack</span>
+          </button>
+          <button id="btnTabCustom" data-product="custom" role="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            <span class="ta-only">கஸ்டம்</span><span class="en-only">Custom</span>
+          </button>
+        </div>
+
+        <!-- ---------- FLEX calculator ---------- -->
+        <div class="frame-card" id="flexCard" role="tabpanel">
+          <div class="frame-card-inner">
+            <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
+            <div class="ticket-head">
+              <h2><span class="ta-only">ஃபிளெக்ஸ் கால்குலேட்டர்</span><span class="en-only">Flex Calculator</span></h2>
+              <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
+            </div>
+
+            <div class="dims-row">
+              <div class="dim-field">
+                <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
+                <div class="input-shell"><input type="number" id="inputWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+              </div>
+              <div class="dims-x">×</div>
+              <div class="dim-field">
+                <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
+                <div class="input-shell"><input type="number" id="inputHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+              </div>
+              <div class="warn-msg" id="warnMsg"></div>
+            </div>
+
+            <div class="rate-row">
+              <div class="rate-field">
+                <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
+                <div class="input-shell"><span class="prefix" id="currPrefix1">₹</span><input type="number" id="inputRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
+              </div>
+              <div class="rate-field">
+                <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
+                <div class="input-shell readout"><span class="prefix" id="displaySqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
+              </div>
+            </div>
+
+            <div class="rate-row">
+              <div class="rate-field" style="grid-column:1 / -1;">
+                <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
+                <div class="input-shell"><input type="number" id="inputFlexQty" inputmode="decimal" min="1" step="1" value="1"></div>
+              </div>
+            </div>
+
+            <div class="result-strip">
+              <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaText">0 × 0 = 0 sq.ft</b></div>
+              <div style="text-align:right;">
+                <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
+                <div class="amount" id="displayAmount">₹0.00</div>
+              </div>
+            </div>
+
+            <button class="add-btn" id="btnAddFlex" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+              <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ---------- FRAME calculator ---------- -->
+        <div class="frame-card hidden" id="frameCard">
+          <div class="frame-card-inner">
+            <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
+            <div class="ticket-head">
+              <h2><span class="ta-only">ஃபிரேம் கால்குலேட்டர்</span><span class="en-only">Frame Calculator</span></h2>
+              <span class="ticket-tag"><span class="ta-only">சைஸ் + அகலம் = விலை</span><span class="en-only">Size + Width = Price</span></span>
+            </div>
+
+            <div class="select-row">
+              <div class="dim-field">
+                <label><span class="ta-only">ஃபிரேம் சைஸ்</span><span class="en-only">Frame Size</span></label>
+                <div class="input-shell"><select id="selectFrameSize"><option value="">Select size</option></select></div>
+              </div>
+              <div class="dim-field">
+                <label><span class="ta-only">ஃபிரேம் அகலம்</span><span class="en-only">Frame Width</span></label>
+                <div class="input-shell"><select id="selectFrameWidth" disabled><option value="">Select size first</option></select></div>
+              </div>
+            </div>
+
+            <div class="frame-price-readout na" id="framePriceBox">
+              <span class="label"><span class="ta-only">விலை</span><span class="en-only">Price</span></span>
+              <span class="value" id="framePriceValue">—</span>
+            </div>
+
+            <div class="qty-price-row">
+              <div class="rate-field">
+                <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
+                <div class="input-shell"><input type="number" id="inputFrameQty" inputmode="decimal" min="1" step="1" value="1"></div>
+              </div>
+              <div class="rate-field">
+                <label><span class="ta-only">மொத்தம்</span><span class="en-only">Line Total</span></label>
+                <div class="input-shell readout"><span class="prefix" id="currPrefix2">₹</span><span class="prefix" id="frameLineTotal">0.00</span></div>
+              </div>
+            </div>
+
+            <button class="add-btn frame-btn" id="btnAddFrame" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+              <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ---------- VINYL calculator ---------- -->
+        <div class="frame-card hidden" id="vinylCard">
+          <div class="frame-card-inner">
+            <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
+            <div class="ticket-head">
+              <h2><span class="ta-only">வினைல் கால்குலேட்டர்</span><span class="en-only">Vinyl Calculator</span></h2>
+              <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
+            </div>
+
+            <div class="dims-row">
+              <div class="dim-field">
+                <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
+                <div class="input-shell"><input type="number" id="inputVinylWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+              </div>
+              <div class="dims-x">×</div>
+              <div class="dim-field">
+                <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
+                <div class="input-shell"><input type="number" id="inputVinylHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+              </div>
+              <div class="warn-msg" id="warnVinylMsg"></div>
+            </div>
+
+            <div class="rate-row">
+              <div class="rate-field">
+                <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
+                <div class="input-shell"><span class="prefix" id="currPrefixVinyl">₹</span><input type="number" id="inputVinylRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
+              </div>
+              <div class="rate-field">
+                <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
+                <div class="input-shell readout"><span class="prefix" id="displayVinylSqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
+              </div>
+            </div>
+
+            <div class="rate-row">
+              <div class="rate-field" style="grid-column:1 / -1;">
+                <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
+                <div class="input-shell"><input type="number" id="inputVinylQty" inputmode="decimal" min="1" step="1" value="1"></div>
+              </div>
+            </div>
+
+            <div class="result-strip">
+              <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaVinylText">0 × 0 = 0 sq.ft</b></div>
+              <div style="text-align:right;">
+                <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
+                <div class="amount" id="displayVinylAmount">₹0.00</div>
+              </div>
+            </div>
+
+            <button class="add-btn" id="btnAddVinyl" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+              <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ---------- STAR FLEX calculator ---------- -->
+        <div class="frame-card hidden" id="starflexCard">
+          <div class="frame-card-inner">
+            <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
+            <div class="ticket-head">
+              <h2><span class="ta-only">ஸ்டார் ஃபிளெக்ஸ் கால்குலேட்டர்</span><span class="en-only">Star Flex Calculator</span></h2>
+              <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
+            </div>
+
+            <div class="dims-row">
+              <div class="dim-field">
+                <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
+                <div class="input-shell"><input type="number" id="inputStarflexWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+              </div>
+              <div class="dims-x">×</div>
+              <div class="dim-field">
+                <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
+                <div class="input-shell"><input type="number" id="inputStarflexHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+              </div>
+              <div class="warn-msg" id="warnStarflexMsg"></div>
+            </div>
+
+            <div class="rate-row">
+              <div class="rate-field">
+                <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
+                <div class="input-shell"><span class="prefix" id="currPrefixStarflex">₹</span><input type="number" id="inputStarflexRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
+              </div>
+              <div class="rate-field">
+                <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
+                <div class="input-shell readout"><span class="prefix" id="displayStarflexSqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
+              </div>
+            </div>
+
+            <div class="rate-row">
+              <div class="rate-field" style="grid-column:1 / -1;">
+                <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
+                <div class="input-shell"><input type="number" id="inputStarflexQty" inputmode="decimal" min="1" step="1" value="1"></div>
+              </div>
+            </div>
+
+            <div class="result-strip">
+              <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaStarflexText">0 × 0 = 0 sq.ft</b></div>
+              <div style="text-align:right;">
+                <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
+                <div class="amount" id="displayStarflexAmount">₹0.00</div>
+              </div>
+            </div>
+
+            <button class="add-btn" id="btnAddStarflex" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+              <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ---------- SUNPACK calculator ---------- -->
+        <div class="frame-card hidden" id="sunpackCard">
+          <div class="frame-card-inner">
+            <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
+            <div class="ticket-head">
+              <h2><span class="ta-only">சன்பேக் கால்குலேட்டர்</span><span class="en-only">Sunpack Calculator</span></h2>
+              <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
+            </div>
+
+            <div class="dims-row">
+              <div class="dim-field">
+                <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
+                <div class="input-shell"><input type="number" id="inputSunpackWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+              </div>
+              <div class="dims-x">×</div>
+              <div class="dim-field">
+                <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
+                <div class="input-shell"><input type="number" id="inputSunpackHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
+              </div>
+              <div class="warn-msg" id="warnSunpackMsg"></div>
+            </div>
+
+            <div class="rate-row">
+              <div class="rate-field">
+                <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
+                <div class="input-shell"><span class="prefix" id="currPrefixSunpack">₹</span><input type="number" id="inputSunpackRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
+              </div>
+              <div class="rate-field">
+                <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
+                <div class="input-shell readout"><span class="prefix" id="displaySunpackSqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
+              </div>
+            </div>
+
+            <div class="rate-row">
+              <div class="rate-field" style="grid-column:1 / -1;">
+                <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
+                <div class="input-shell"><input type="number" id="inputSunpackQty" inputmode="decimal" min="1" step="1" value="1"></div>
+              </div>
+            </div>
+
+            <div class="result-strip">
+              <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaSunpackText">0 × 0 = 0 sq.ft</b></div>
+              <div style="text-align:right;">
+                <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
+                <div class="amount" id="displaySunpackAmount">₹0.00</div>
+              </div>
+            </div>
+
+            <button class="add-btn" id="btnAddSunpack" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+              <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ---------- CUSTOM calculator ---------- -->
+        <div class="frame-card hidden" id="customCard">
+          <div class="frame-card-inner">
+            <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
+            <div class="ticket-head">
+              <h2><span class="ta-only">கஸ்டம் ஐட்டம்</span><span class="en-only">Custom Item</span></h2>
+              <span class="ticket-tag"><span class="ta-only">பெயர் × ரேட் × எண்ணிக்கை</span><span class="en-only">Name × Rate × Qty</span></span>
+            </div>
+
+            <div class="dims-row">
+              <div class="dim-field" style="grid-column:1 / -1;">
+                <label><span class="ta-only">பொருளின் பெயர்</span><span class="en-only">Item Name</span></label>
+                <div class="input-shell"><input type="text" id="inputCustomName" placeholder="e.g. ACP Board · Sticker · Printing" autocomplete="off"></div>
+              </div>
+            </div>
+
+            <div class="rate-row">
+              <div class="rate-field">
+                <label><span class="ta-only">ரேட்</span><span class="en-only">Rate</span></label>
+                <div class="input-shell"><span class="prefix" id="currPrefixCustom">₹</span><input type="number" id="inputCustomRate" inputmode="decimal" min="0" step="0.5" placeholder="0"></div>
+              </div>
+              <div class="rate-field">
+                <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
+                <div class="input-shell"><input type="number" id="inputCustomQty" inputmode="decimal" min="1" step="1" value="1"></div>
+              </div>
+            </div>
+
+            <div class="result-strip">
+              <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaCustomText">0 × 0</b></div>
+              <div style="text-align:right;">
+                <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
+                <div class="amount" id="displayCustomAmount">₹0.00</div>
+              </div>
+            </div>
+
+            <button class="add-btn" id="btnAddCustom" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+              <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ================= Bill / customer column ================= -->
+      <div class="bill-column">
+
+        <!-- ---------- Customer ---------- -->
+        <section class="panel-card" aria-label="Customer details">
+          <div class="panel-head">
+            <h3><span class="ta-only">வாடிக்கையாளர் விவரம்</span><span class="en-only">Customer Details</span></h3>
+            <span class="hint"><span class="ta-only">விருப்பம்</span><span class="en-only">Optional</span></span>
+          </div>
+          <div class="panel-body">
+            <div class="customer-row">
+              <input type="text" id="custName" list="customerNames" placeholder="Customer name" autocomplete="off">
+              <input type="tel" id="custPhone" placeholder="Phone number">
+            </div>
+            <div class="customer-row addr"><input type="text" id="custAddress" placeholder="Address (optional)"></div>
+            <datalist id="customerNames"></datalist>
+          </div>
+        </section>
+
+        <!-- ---------- Bill items ---------- -->
+        <section class="panel-card" aria-label="Bill items">
+          <div class="panel-head">
+            <h3><span class="ta-only">பில் ஐட்டம்ஸ்</span><span class="en-only">Bill Items</span></h3>
+            <button class="ghost-btn" id="btnNewBill">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M12 18v-6M9 15h6"></path></svg>
+              <span class="ta-only">புது பில்</span><span class="en-only">New Bill</span>
+            </button>
+          </div>
+          <div class="panel-body">
+            <div class="bill-list" id="billList"></div>
+            <div class="grand-total" id="grandTotal" style="display:none;">
+              <span class="label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Grand Total</span></span>
+              <span class="value" id="grandTotalValue">₹0.00</span>
+            </div>
+
+            <div class="action-row">
+              <button class="save" id="btnSaveBill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><path d="M17 21v-8H7v8M7 3v5h8"></path></svg><span class="ta-only">பில் சேமி</span><span class="en-only">Save Bill</span></button>
+              <button class="primary" id="btnPreviewInvoice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M16 13H8m8 4H8m2-8H8"></path></svg><span class="ta-only">இன்வாய்ஸ் பார்</span><span class="en-only">Preview Invoice</span></button>
+              <button id="btnClearBill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6h14z"></path></svg><span class="ta-only">அழி</span><span class="en-only">Clear</span></button>
+            </div>
+
+            <div class="quick-actions">
+              <button id="btnDraftPrint" title="Print"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"></path></svg><span class="en-only">Print</span><span class="ta-only">அச்சு</span></button>
+              <button id="btnDraftPdf" title="Download PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg><span class="en-only">PDF</span></button>
+              <button id="btnDraftShare" title="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"></path></svg><span class="en-only">Share</span></button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------- Credit accounts (Phase 1) ---------- -->
+        <section class="panel-card" aria-label="Credit accounts">
+          <div class="panel-head">
+            <h3><span class="ta-only">கடன் கணக்குகள்</span><span class="en-only">Credit Accounts</span></h3>
+            <button class="ghost-btn" id="btnGotoLedger">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" fill="none"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+              <span class="en-only">Full Ledger</span><span class="ta-only">முழு கணக்கு</span>
+            </button>
+          </div>
+          <div class="panel-body">
+            <div id="creditAccountsList"></div>
+          </div>
+        </section>
+
+        <footer class="app-footer">
+          <span class="ta-only">SK Flex · உங்க கடைக்கு சொந்தமான பில்லிங் செயலி</span>
+          <span class="en-only">SK Flex · professional billing for your Flex &amp; Frame shop</span>
+        </footer>
       </div>
     </div>
-
-    <div class="product-tabs">
-      <button id="btnTabFlex" data-product="flex" class="active">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
-        <span class="ta-only">ஃபிளெக்ஸ்</span><span class="en-only">Flex</span>
-      </button>
-      <button id="btnTabFrame" data-product="frame">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><rect x="7" y="7" width="10" height="10" rx="1"></rect></svg>
-        <span class="ta-only">ஃபிரேம்</span><span class="en-only">Frame</span>
-      </button>
-      <button id="btnTabVinyl" data-product="vinyl">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
-        <span class="ta-only">வினைல்</span><span class="en-only">Vinyl</span>
-      </button>
-      <button id="btnTabStarflex" data-product="starflex">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
-        <span class="ta-only">ஸ்டார் ஃபிளெக்ஸ்</span><span class="en-only">Star Flex</span>
-      </button>
-      <button id="btnTabSunpack" data-product="sunpack">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
-        <span class="ta-only">சன்பேக்</span><span class="en-only">Sunpack</span>
-      </button>
-    </div>
-
-    <!-- ---------- FLEX calculator ---------- -->
-    <div class="frame-card" id="flexCard">
-      <div class="frame-card-inner">
-        <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
-        <div class="ticket-head">
-          <h2><span class="ta-only">ஃபிளெக்ஸ் கால்குலேட்டர்</span><span class="en-only">Flex Calculator</span></h2>
-          <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
-        </div>
-
-        <div class="dims-row">
-          <div class="dim-field">
-            <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
-            <div class="input-shell"><input type="number" id="inputWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
-          </div>
-          <div class="dims-x">×</div>
-          <div class="dim-field">
-            <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
-            <div class="input-shell"><input type="number" id="inputHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
-          </div>
-          <div class="warn-msg" id="warnMsg"></div>
-        </div>
-
-        <div class="rate-row">
-          <div class="rate-field">
-            <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
-            <div class="input-shell"><span class="prefix" id="currPrefix1">₹</span><input type="number" id="inputRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
-          </div>
-          <div class="rate-field">
-            <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
-            <div class="input-shell readout"><span class="prefix" id="displaySqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
-          </div>
-        </div>
-
-        <div class="rate-row">
-          <div class="rate-field" style="grid-column:1 / -1;">
-            <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
-            <div class="input-shell"><input type="number" id="inputFlexQty" inputmode="decimal" min="1" step="1" value="1"></div>
-          </div>
-        </div>
-
-        <div class="result-strip">
-          <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaText">0 × 0 = 0 sq.ft</b></div>
-          <div style="text-align:right;">
-            <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
-            <div class="amount" id="displayAmount">₹0.00</div>
-          </div>
-        </div>
-
-        <button class="add-btn" id="btnAddFlex" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
-          <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- ---------- FRAME calculator ---------- -->
-    <div class="frame-card hidden" id="frameCard">
-      <div class="frame-card-inner">
-        <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
-        <div class="ticket-head">
-          <h2><span class="ta-only">ஃபிரேம் கால்குலேட்டர்</span><span class="en-only">Frame Calculator</span></h2>
-          <span class="ticket-tag"><span class="ta-only">சைஸ் + அகலம் = விலை</span><span class="en-only">Size + Width = Price</span></span>
-        </div>
-
-        <div class="select-row">
-          <div class="dim-field">
-            <label><span class="ta-only">ஃபிரேம் சைஸ்</span><span class="en-only">Frame Size</span></label>
-            <div class="input-shell"><select id="selectFrameSize"><option value="">Select size</option></select></div>
-          </div>
-          <div class="dim-field">
-            <label><span class="ta-only">ஃபிரேம் அகலம்</span><span class="en-only">Frame Width</span></label>
-            <div class="input-shell"><select id="selectFrameWidth" disabled><option value="">Select size first</option></select></div>
-          </div>
-        </div>
-
-        <div class="frame-price-readout na" id="framePriceBox" style="margin-top:14px;">
-          <span class="label"><span class="ta-only">விலை</span><span class="en-only">Price</span></span>
-          <span class="value" id="framePriceValue">—</span>
-        </div>
-
-        <div class="qty-price-row">
-          <div class="rate-field">
-            <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
-            <div class="input-shell"><input type="number" id="inputFrameQty" inputmode="decimal" min="1" step="1" value="1"></div>
-          </div>
-          <div class="rate-field">
-            <label><span class="ta-only">மொத்தம்</span><span class="en-only">Line Total</span></label>
-            <div class="input-shell readout"><span class="prefix" id="currPrefix2">₹</span><span class="prefix" id="frameLineTotal">0.00</span></div>
-          </div>
-        </div>
-
-        <button class="add-btn frame-btn" id="btnAddFrame" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
-          <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- ---------- VINYL calculator ---------- -->
-    <div class="frame-card hidden" id="vinylCard">
-      <div class="frame-card-inner">
-        <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
-        <div class="ticket-head">
-          <h2><span class="ta-only">வினைல் கால்குலேட்டர்</span><span class="en-only">Vinyl Calculator</span></h2>
-          <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
-        </div>
-
-        <div class="dims-row">
-          <div class="dim-field">
-            <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
-            <div class="input-shell"><input type="number" id="inputVinylWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
-          </div>
-          <div class="dims-x">×</div>
-          <div class="dim-field">
-            <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
-            <div class="input-shell"><input type="number" id="inputVinylHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
-          </div>
-          <div class="warn-msg" id="warnVinylMsg"></div>
-        </div>
-
-        <div class="rate-row">
-          <div class="rate-field">
-            <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
-            <div class="input-shell"><span class="prefix" id="currPrefixVinyl">₹</span><input type="number" id="inputVinylRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
-          </div>
-          <div class="rate-field">
-            <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
-            <div class="input-shell readout"><span class="prefix" id="displayVinylSqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
-          </div>
-        </div>
-
-        <div class="rate-row">
-          <div class="rate-field" style="grid-column:1 / -1;">
-            <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
-            <div class="input-shell"><input type="number" id="inputVinylQty" inputmode="decimal" min="1" step="1" value="1"></div>
-          </div>
-        </div>
-
-        <div class="result-strip">
-          <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaVinylText">0 × 0 = 0 sq.ft</b></div>
-          <div style="text-align:right;">
-            <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
-            <div class="amount" id="displayVinylAmount">₹0.00</div>
-          </div>
-        </div>
-
-        <button class="add-btn" id="btnAddVinyl" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
-          <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- ---------- STAR FLEX calculator ---------- -->
-    <div class="frame-card hidden" id="starflexCard">
-      <div class="frame-card-inner">
-        <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
-        <div class="ticket-head">
-          <h2><span class="ta-only">ஸ்டார் ஃபிளெக்ஸ் கால்குலேட்டர்</span><span class="en-only">Star Flex Calculator</span></h2>
-          <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
-        </div>
-
-        <div class="dims-row">
-          <div class="dim-field">
-            <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
-            <div class="input-shell"><input type="number" id="inputStarflexWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
-          </div>
-          <div class="dims-x">×</div>
-          <div class="dim-field">
-            <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
-            <div class="input-shell"><input type="number" id="inputStarflexHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
-          </div>
-          <div class="warn-msg" id="warnStarflexMsg"></div>
-        </div>
-
-        <div class="rate-row">
-          <div class="rate-field">
-            <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
-            <div class="input-shell"><span class="prefix" id="currPrefixStarflex">₹</span><input type="number" id="inputStarflexRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
-          </div>
-          <div class="rate-field">
-            <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
-            <div class="input-shell readout"><span class="prefix" id="displayStarflexSqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
-          </div>
-        </div>
-
-        <div class="rate-row">
-          <div class="rate-field" style="grid-column:1 / -1;">
-            <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
-            <div class="input-shell"><input type="number" id="inputStarflexQty" inputmode="decimal" min="1" step="1" value="1"></div>
-          </div>
-        </div>
-
-        <div class="result-strip">
-          <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaStarflexText">0 × 0 = 0 sq.ft</b></div>
-          <div style="text-align:right;">
-            <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
-            <div class="amount" id="displayStarflexAmount">₹0.00</div>
-          </div>
-        </div>
-
-        <button class="add-btn" id="btnAddStarflex" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
-          <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- ---------- SUNPACK calculator ---------- -->
-    <div class="frame-card hidden" id="sunpackCard">
-      <div class="frame-card-inner">
-        <span class="miter-mark tl"></span><span class="miter-mark tr"></span><span class="miter-mark bl"></span><span class="miter-mark br"></span>
-        <div class="ticket-head">
-          <h2><span class="ta-only">சன்பேக் கால்குலேட்டர்</span><span class="en-only">Sunpack Calculator</span></h2>
-          <span class="ticket-tag"><span class="ta-only">அடி × அடி × ரேட்</span><span class="en-only">W × H × Rate</span></span>
-        </div>
-
-        <div class="dims-row">
-          <div class="dim-field">
-            <label><span class="ta-only">அகலம் (Width)</span><span class="en-only">Width</span></label>
-            <div class="input-shell"><input type="number" id="inputSunpackWidth" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
-          </div>
-          <div class="dims-x">×</div>
-          <div class="dim-field">
-            <label><span class="ta-only">உயரம் (Height)</span><span class="en-only">Height</span></label>
-            <div class="input-shell"><input type="number" id="inputSunpackHeight" inputmode="decimal" min="0" step="0.5" placeholder="0"><span class="unit"><span class="ta-only">அடி</span><span class="en-only">ft</span></span></div>
-          </div>
-          <div class="warn-msg" id="warnSunpackMsg"></div>
-        </div>
-
-        <div class="rate-row">
-          <div class="rate-field">
-            <label><span class="ta-only">ஸ்கொயர் ஃபீட் ரேட்</span><span class="en-only">Rate per Sq.ft</span></label>
-            <div class="input-shell"><span class="prefix" id="currPrefixSunpack">₹</span><input type="number" id="inputSunpackRate" inputmode="decimal" min="0" step="0.5"><span class="suffix"><span class="ta-only">/ அடி</span><span class="en-only">/ sq.ft</span></span></div>
-          </div>
-          <div class="rate-field">
-            <label><span class="ta-only">மொத்த ஸ்கொயர் ஃபீட்</span><span class="en-only">Total Sq.ft</span></label>
-            <div class="input-shell readout"><span class="prefix" id="displaySunpackSqft">0</span><span class="suffix"><span class="ta-only">அடி²</span><span class="en-only">sq.ft</span></span></div>
-          </div>
-        </div>
-
-        <div class="rate-row">
-          <div class="rate-field" style="grid-column:1 / -1;">
-            <label><span class="ta-only">எண்ணிக்கை (Qty)</span><span class="en-only">Quantity</span></label>
-            <div class="input-shell"><input type="number" id="inputSunpackQty" inputmode="decimal" min="1" step="1" value="1"></div>
-          </div>
-        </div>
-
-        <div class="result-strip">
-          <div class="formula"><span class="ta-only">கணக்கு:</span><span class="en-only">Formula:</span> <b id="formulaSunpackText">0 × 0 = 0 sq.ft</b></div>
-          <div style="text-align:right;">
-            <div class="amount-label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Amount</span></div>
-            <div class="amount" id="displaySunpackAmount">₹0.00</div>
-          </div>
-        </div>
-
-        <button class="add-btn" id="btnAddSunpack" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
-          <span class="ta-only">பில்-ல் சேர்</span><span class="en-only">Add to Bill</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- ---------- Customer ---------- -->
-    <div class="section-title"><h3><span class="ta-only">வாடிக்கையாளர் விவரம்</span><span class="en-only">Customer Details</span></h3><span class="hint en-only">Optional</span></div>
-    <div class="customer-card">
-      <div class="customer-row">
-        <input type="text" id="custName" list="customerNames" placeholder="Customer name">
-        <input type="tel" id="custPhone" placeholder="Phone number">
-      </div>
-      <div class="customer-row addr"><input type="text" id="custAddress" placeholder="Address (optional)"></div>
-      <datalist id="customerNames"></datalist>
-    </div>
-
-    <!-- ---------- Bill items ---------- -->
-    <div class="section-title">
-      <h3><span class="ta-only">பில் ஐட்டம்ஸ்</span><span class="en-only">Bill Items</span></h3>
-      <button class="ghost-btn" id="btnNewBill"><span class="ta-only">புது பில்</span><span class="en-only">New Bill</span></button>
-    </div>
-    <div class="bill-list" id="billList"></div>
-    <div class="grand-total" id="grandTotal" style="display:none;">
-      <span class="label"><span class="ta-only">மொத்த தொகை</span><span class="en-only">Grand Total</span></span>
-      <span class="value" id="grandTotalValue">₹0.00</span>
-    </div>
-
-    <div class="action-row" style="grid-template-columns:0.8fr 0.9fr 1.3fr;">
-      <button id="btnClearBill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6h14z"></path></svg><span class="ta-only">அழி</span><span class="en-only">Clear</span></button>
-      <button class="save" id="btnSaveBill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><path d="M17 21v-8H7v8M7 3v5h8"></path></svg><span class="ta-only">சேமி</span><span class="en-only">Save</span></button>
-      <button class="primary" id="btnPreviewInvoice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M16 13H8m8 4H8m2-8H8"></path></svg><span class="ta-only">இன்வாய்ஸ் பார்</span><span class="en-only">Preview Invoice</span></button>
-    </div>
-
-    <footer class="app-footer">
-      <span class="ta-only">SK Flex · உங்க கடைக்கு சொந்தமான பில்லிங் செயலி</span>
-      <span class="en-only">SK Flex · professional billing for your Flex &amp; Frame shop</span>
-    </footer>
   </div>
 
   <!-- ================= DATE HISTORY PAGE ================= -->
   <div class="page" id="page-history">
-    <div class="section-title" style="margin-top:8px;">
-      <h3><span class="ta-only">தேதி வரலாறு</span><span class="en-only">Date History</span></h3>
+    <div class="page-head">
+      <div class="ph-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg></div>
+      <div class="ph-text">
+        <h2><span class="ta-only">தேதி வரலாறு</span><span class="en-only">Date History</span></h2>
+        <p><span class="ta-only">தேதி வாரியாக சேமித்த பில்களை பார்க்கவும்.</span><span class="en-only">Browse bills saved by date.</span></p>
+      </div>
+      <div style="flex:1;"></div>
+      <button class="ghost-btn home-btn" id="btnBackHomeFromHistory" title="Back to Dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+        <span class="en-only">Back</span><span class="ta-only">பின்செல்</span>
+      </button>
     </div>
 
     <div id="historyDatesView">
@@ -391,31 +530,100 @@
     <div id="historyBillsView" class="hidden">
       <div class="section-title" style="margin-top:0;">
         <h3 id="historyBillsDateTitle"></h3>
-        <button class="ghost-btn" id="btnBackToDates">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
-          <span class="en-only">Back</span><span class="ta-only">பின்</span>
-        </button>
+        <div style="display:flex; gap:8px;">
+          <button class="ghost-btn home-btn" id="btnBackHomeFromHistoryBills" title="Back to Dashboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12L12 3l9 9M5 10v10h14V10"></path></svg>
+            <span class="en-only">Home</span><span class="ta-only">முகப்பு</span>
+          </button>
+          <button class="ghost-btn" id="btnBackToDates">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+            <span class="en-only">Back</span><span class="ta-only">பின்செல்</span>
+          </button>
+        </div>
       </div>
       <div id="historyBillsList"></div>
     </div>
   </div>
 
+  <!-- ================= LEDGER PAGE (Phase 1) ================= -->
+  <div class="page" id="page-ledger">
+    <div id="ledgerCustomersView">
+      <div class="page-head">
+        <div class="ph-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></div>
+        <div class="ph-text">
+          <h2><span class="ta-only">வாடிக்கையாளர் கணக்குகள்</span><span class="en-only">Customer Accounts</span></h2>
+          <p><span class="ta-only">ஒவ்வொரு வாடிக்கையாளரின் மீதி நிலுவை செட்</span><span class="en-only">Every customer's outstanding balance, at a glance.</span></p>
+        </div>
+        <div style="flex:1;"></div>
+        <button class="ghost-btn home-btn" id="btnBackHomeFromLedger" title="Back to Dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+          <span class="en-only">Back</span><span class="ta-only">பின்செல்</span>
+        </button>
+      </div>
+
+      <div id="ledgerCustomersList"></div>
+    </div>
+
+    <div id="ledgerDetailView" class="hidden">
+      <div class="section-title" style="margin-top:0;">
+        <h3 id="ledgerDetailTitle"></h3>
+        <button class="ghost-btn" id="btnBackToLedgerCustomers">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+          <span class="en-only">Back</span><span class="ta-only">பின்செல்</span>
+        </button>
+      </div>
+      <p style="margin:-6px 0 12px; font-size:12.5px; color:var(--ink-faint);" id="ledgerDetailSub"></p>
+      <div class="acct-summary">
+        <div class="acct-stat">
+          <span class="acct-label"><span class="en-only">Total Sales</span><span class="ta-only">மொத்த விற்பனை</span></span>
+          <span class="acct-value" id="ledgerTotalSales">₹0.00</span>
+        </div>
+        <div class="acct-stat">
+          <span class="acct-label"><span class="en-only">Paid</span><span class="ta-only">பெற்றது</span></span>
+          <span class="acct-value" id="ledgerTotalPaid">₹0.00</span>
+        </div>
+        <div class="acct-stat">
+          <span class="acct-label"><span class="en-only">Balance</span><span class="ta-only">மீதி</span></span>
+          <span class="acct-value" id="ledgerBalance">₹0.00</span>
+        </div>
+      </div>
+      <div class="acct-status" id="ledgerStatus"></div>
+      <div class="acct-actions">
+        <button class="btn primary" id="btnAddPaymentFromLedger">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12a2 2 0 0 0 0 4h4v-4z"></path></svg>
+          <span class="en-only">Add Payment</span><span class="ta-only">பணம் சேர்</span>
+        </button>
+        <button class="btn secondary" id="btnPaymentHistory">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"></path><path d="M3 6h.01M3 12h.01M3 18h.01"></path></svg>
+          <span class="en-only">Payment History</span><span class="ta-only">பண வரலாறு</span>
+        </button>
+      </div>
+      <div id="ledgerTransactions"></div>
+    </div>
+  </div>
+
   <!-- ================= SETTINGS PAGE ================= -->
   <div class="page" id="page-settings">
-    <div class="section-title" style="margin-top:8px;">
-      <h3><span class="ta-only">செட்டிங்ஸ்</span><span class="en-only">Settings</span></h3>
-      <button class="ghost-btn" id="btnBackToBilling">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
-        <span class="en-only">Back</span><span class="ta-only">பின்</span>
+    <div class="page-head">
+      <div class="ph-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></div>
+      <div class="ph-text">
+        <h2><span class="ta-only">செட்டிங்ஸ்</span><span class="en-only">Settings</span></h2>
+        <p><span class="ta-only">கம்பெனி, வாடிக்கையாளர்கள், டீஃபால்ட்</span><span class="en-only">Companies, customers, defaults, data &amp; cloud backup.</span></p>
+      </div>
+      <div style="flex:1;"></div>
+      <button class="ghost-btn home-btn" id="btnBackToBilling">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+        <span class="en-only">Back</span><span class="ta-only">பின்செல்</span>
       </button>
     </div>
 
-    <div class="settings-tabs">
+    <div class="settings-tabs" role="tablist">
       <button class="active" data-tab="company">Company Profiles</button>
       <button data-tab="customers">Customers</button>
       <button data-tab="prefs">Billing Defaults</button>
       <button data-tab="data">Data</button>
       <button data-tab="bills">Saved Bills</button>
+      <button data-tab="cloud">Cloud Backup</button>
     </div>
 
     <!-- ---- Company panel ---- -->
@@ -482,17 +690,20 @@
     <!-- ---- Data panel ---- -->
     <div class="settings-panel" id="panel-data">
       <div class="card-block">
-        <h4>Backup &amp; Reset</h4>
-        <p class="sub">Export your companies, customers and defaults as a backup file, or restore from one.</p>
+        <h4>Backup &amp; Restore</h4>
+        <p class="sub">Export your companies, customers, bills and defaults as a backup file, or restore from one.</p>
         <div class="modal-actions" style="margin-top:0;">
           <button class="btn secondary" id="btnExportData">Export Data</button>
           <label class="btn secondary" style="cursor:pointer;">Import Data<input type="file" id="btnImportData" accept="application/json" style="display:none;"></label>
         </div>
       </div>
-      <div class="card-block">
+      <div class="card-block" style="border-color:#EAC9C4;">
         <h4 style="color:var(--danger);">Reset Everything</h4>
-        <p class="sub">Permanently clears companies, customers and settings on this device.</p>
-        <button class="ghost-btn danger" id="btnResetAll">Reset All Data</button>
+        <p class="sub">Permanently clears companies, customers, bills and settings on this device.</p>
+        <button class="ghost-btn danger" id="btnResetAll">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6h14z"></path></svg>
+          Reset All Data
+        </button>
       </div>
     </div>
 
@@ -502,6 +713,56 @@
         <h4>Saved Bills</h4>
         <p class="sub">Bills you've saved, grouped by date. Tap a date to see the bills saved on it.</p>
         <div id="settingsBillsList"></div>
+      </div>
+    </div>
+
+    <!-- ---- Cloud Backup panel ---- -->
+    <div class="settings-panel" id="panel-cloud">
+      <div class="card-block">
+        <div class="cloud-shell">
+          <div class="cloud-account">
+            <div class="ca-top">
+              <div class="ca-avatar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path><rect x="2" y="3" width="20" height="14" rx="2"></rect><circle cx="8" cy="21" r="2"></circle><circle cx="16" cy="21" r="2"></circle><path d="M10 17h4"></path><path d="M13 12h-2v3h2z"></path><path d="M2 11h20"></path></svg>
+              </div>
+              <div>
+                <div class="ca-title">Google Drive Backup</div>
+                <div class="ca-sub">Private cloud sync (AppData folder)</div>
+              </div>
+            </div>
+            <p id="cloudStatusText" style="margin:16px 0 6px;">Not connected. Sign in with Google to back up your billing data to your private cloud folder.</p>
+            <div class="cloud-account-meta" id="cloudAccountMeta" hidden>
+              <img id="cloudAccountAvatar" class="account-avatar" alt="" hidden>
+              <span id="cloudAccountInitials" class="account-avatar account-avatar-initials" hidden></span>
+              <div class="cloud-account-meta-text">
+                <div class="cloud-account-meta-name" id="cloudAccountName"></div>
+                <div class="cloud-account-meta-email" id="cloudAccountEmail"></div>
+              </div>
+            </div>
+            <p id="cloudLastSynced"></p>
+            <div class="cloud-actions">
+              <button class="btn btn-signin" id="btnCloudSignIn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17l5-5-5-5M15 12H3"></path></svg>
+                Sign in with Google
+              </button>
+              <button class="btn secondary" id="btnCloudSync" style="display:none;">Sync Now</button>
+              <button class="btn secondary" id="btnCloudBackup" style="display:none;">Backup Now</button>
+              <button class="btn secondary" id="btnCloudRestore" style="display:none;">
+
+                Restore from Cloud</button>
+              <button class="btn btn-signout" id="btnCloudSignOut" style="display:none;">Sign Out</button>
+              <div class="cloud-note">
+                Your data stays offline-first on this device and only syncs to your own private Drive
+                folder when you sign in. No third parties see it.
+              </div>
+            </div>
+          </div>
+          <div class="card-block" style="margin:0; box-shadow:none;">
+            <h4>How it works</h4>
+            <p class="sub">1. Sign in with your Google account.<br>2. Changes <b>auto-sync</b> to your private Drive folder while signed in.<br>3. <b>Sync Now</b> downloads cloud changes and merges edits made on other devices.<br>4. <b>Restore</b> replaces this device's data with the cloud copy (a local snapshot is kept first).</p>
+            <div class="acct-status settled" style="text-align:left;">Private appdata folder · end-to-end via Google Drive API</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -517,6 +778,10 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>
     <span class="ta-only">தேதி வரலாறு</span><span class="en-only">History</span>
   </button>
+  <button data-page="ledger">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+    <span class="ta-only">கணக்கு</span><span class="en-only">Ledger</span>
+  </button>
   <button data-page="settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
     <span class="ta-only">செட்டிங்ஸ்</span><span class="en-only">Settings</span>
@@ -529,11 +794,41 @@
     <div class="invoice-toolbar">
       <button class="btn-print" id="btnPrint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"></path></svg>Print</button>
       <button class="btn-pdf" id="btnDownloadPdf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg><span id="btnDownloadPdfLabel">Download PDF</span></button>
-      <button class="btn-pdf" id="btnDownloadJpeg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg><span id="btnDownloadJpegLabel">Download JPEG</span></button>
+      <button class="btn-pdf" id="btnDownloadJpeg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg><span id="btnDownloadJpegLabel">Download JPEG</span></button>
       <button class="btn-share" id="btnShare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"></path></svg>Share</button>
       <button class="btn-close" id="btnCloseInvoice" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
     </div>
     <div id="invoiceArea"><!-- populated by JS --></div>
+  </div>
+</div>
+
+<!-- ================= Payment modal (Phase 1) ================= -->
+<div class="modal-overlay" id="paymentOverlay">
+  <div class="modal">
+    <h3><span class="ta-only">பணம் சேர்</span><span class="en-only">Record Payment</span></h3>
+    <p class="sub"><span class="ta-only">வாடிக்கையாளர் செலுத்திய தொகையை பதிவு செய்யவும்.</span><span class="en-only">Record a payment received from the customer.</span></p>
+    <div class="field-block"><label class="f-label"><span class="ta-only">வாடிக்கையாளர்</span><span class="en-only">Customer</span></label>
+      <div class="input-shell"><input type="text" id="paymentCustomer" list="customerNames" placeholder="Customer name" style="font-size:15px;"></div>
+    </div>
+    <div class="field-grid2">
+      <div class="field-block"><label class="f-label"><span class="ta-only">தேதி</span><span class="en-only">Date</span></label>
+        <div class="input-shell"><input type="date" id="paymentDate"></div>
+      </div>
+      <div class="field-block"><label class="f-label"><span class="ta-only">தொகை</span><span class="en-only">Amount</span></label>
+        <div class="input-shell"><span class="prefix">₹</span><input type="number" id="paymentAmount" inputmode="decimal" min="0" step="0.5" placeholder="0"></div>
+      </div>
+    </div>
+    <div class="field-block"><label class="f-label"><span class="ta-only">செலுத்தும் முறை</span><span class="en-only">Payment Method</span></label>
+      <div class="input-shell"><select id="paymentMethod" style="font-size:15px;"></select></div>
+    </div>
+    <div class="field-block"><label class="f-label"><span class="ta-only">குறிப்பு / ரெஃபரன்ஸ் (விருப்பம்)</span><span class="en-only">Note / Reference (optional)</span></label>
+      <div class="input-shell"><input type="text" id="paymentNote" placeholder="e.g. UTR number, cash received" style="font-size:15px;"></div>
+    </div>
+    <div class="saved-note" id="paymentErrorNote"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="btnCancelPayment"><span class="en-only">Cancel</span><span class="ta-only">ரத்து</span></button>
+      <button class="btn primary" id="btnSavePayment"><span class="en-only">Save Payment</span><span class="ta-only">சேமி</span></button>
+    </div>
   </div>
 </div>
 
@@ -549,6 +844,21 @@
   </div>
 </div>
 
+<!-- ================= Cloud conflict modal ================= -->
+<div class="modal-overlay" id="cloudConflictOverlay">
+  <div class="modal">
+    <h3 id="cloudConflictTitle">Data conflict</h3>
+    <p class="sub" id="cloudConflictInfo">Billing data changed on both this device and the cloud.</p>
+    <div class="modal-actions">
+      <button class="btn secondary" id="btnCloudConflictCancel">Cancel</button>
+      <button class="btn primary" id="btnCloudMergeData" style="background:var(--green);">Merge data</button>
+      <button class="btn secondary" id="btnCloudKeepLocal">Keep this device</button>
+      <button class="btn secondary" id="btnCloudUseCloud">Use cloud copy</button>
+    </div>
+  </div>
+</div>
+
 <script src="js/app.js"></script>
+<script src="js/cloud.js"></script>
 </body>
 </html>

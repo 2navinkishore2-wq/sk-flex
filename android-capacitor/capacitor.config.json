@@ -1,0 +1,40 @@
+{
+  "appId": "com.skflex.billing",
+  "appName": "SK Flex Billing",
+  "webDir": "www",
+  "version": "1.0.0",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#FAF7F2",
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#241C1A",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "splashImmersive": true
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#D2222A",
+      "overlaysWebView": false
+    },
+    "Filesystem": {
+      "defaultDirectory": "DOCUMENTS"
+    },
+    "GoogleSignIn": {
+      "webClientId": "REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com",
+      "scopes": [
+        "https://www.googleapis.com/auth/drive.appdata"
+      ]
+    }
+  }
+}

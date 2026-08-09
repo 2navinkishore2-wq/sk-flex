@@ -1,0 +1,14 @@
+{
+  "app": "skflex",
+  "schema": 1,
+  "fileName": "skflex-backup.json",
+  "scope": "https://www.googleapis.com/auth/drive.appdata",
+  "electron": {
+    "clientId": "498249535985-v28mbmbpv9kvt36bpbto0fg7mlnbq72d.apps.googleusercontent.com",
+    "redirectUri": "http://127.0.0.1:41337/oauth/callback",
+    "authPort": 41337
+  },
+  "android": {
+    "webClientId": "498249535985-v28mbmbpv9kvt36bpbto0fg7mlnbq72d.apps.googleusercontent.com"
+  }
+}
