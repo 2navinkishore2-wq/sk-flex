@@ -1,0 +1,55 @@
+name: Deploy Web to GitHub Pages
+
+# Deploys the production Web build (PWA) to GitHub Pages.
+#
+# The Firebase Web client configuration is PUBLIC by design (it is embedded in
+# every browser bundle and protected by the Firestore rules, never a secret).
+# It is supplied to the build from repository VARIABLES (Settings → Secrets
+# and variables → Actions → Variables) so the repository itself stays free of
+# credentials — a fresh clone without those variables still builds and runs in
+# Demo mode exactly like a local build without .env.
+#
+# After enabling, add the Pages origin (https://<owner>.github.io, or the
+# custom domain) to Firebase Console → Authentication → Settings →
+# Authorized domains so Google Sign-In is allowed from this origin.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build web app with Firebase config
+        run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_GOOGLE_WEB_CLIENT_ID: ${{ vars.VITE_GOOGLE_WEB_CLIENT_ID }}
+          VITE_DATA_MODE: auto
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - uses: actions/deploy-pages@v4
