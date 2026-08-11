@@ -1,0 +1,86 @@
+{
+  "name": "sk-flex-billing",
+  "private": true,
+  "version": "1.0.0",
+  "description": "SK Flex Billing — cross-platform billing app for a Flex/Sign Board printing shop (Web + Android APK + Windows EXE)",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "icons": "node scripts/generate-icons.mjs",
+    "electron:dev": "concurrently -k \"vite --port 5173\" \"wait-on tcp:127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "electron:build": "npm run build && electron-builder --win",
+    "android:add": "cap add android",
+    "android:sync": "npm run build && cap sync android",
+    "android:apk": "npm run build && cap sync android && cd android && .\\gradlew.bat assembleDebug",
+    "android:apk:sh": "npm run build && cap sync android && cd android && ./gradlew assembleDebug",
+    "android:release": "npm run build && cap sync android && cd android && .\\gradlew.bat bundleRelease",
+    "android:release:sh": "npm run build && cap sync android && cd android && ./gradlew bundleRelease",
+    "android:shas": "node scripts/android-shas.mjs",
+    "deploy:web": "npm run build && npx --yes firebase-tools@latest deploy --only hosting,firestore:rules,firestore:indexes",
+    "cloud:verify": "npx --yes firebase-tools@latest emulators:exec --only firestore,auth --project demo-skflex \"tsx scripts/verify-cloud.ts\"",
+    "cloud:emulators": "npx --yes firebase-tools@latest emulators:start --only firestore,auth --project demo-skflex"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/core": "^6.1.0",
+    "@capacitor/filesystem": "^6.0.0",
+    "@capacitor/share": "^6.0.0",
+    "@capgo/capacitor-social-login": "^6.0.1",
+    "@fontsource/inter": "^5.0.18",
+    "decimal.js": "^10.4.3",
+    "firebase": "^10.12.0",
+    "html2canvas-pro": "^1.5.8",
+    "jspdf": "^2.5.1",
+    "lucide-react": "^0.441.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.0",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
+    "@types/node": "^22.5.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.0.1",
+    "cross-env": "^7.0.3",
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^30.0.1",
+    "tsx": "^4.23.12",
+    "typescript": "~5.6.2",
+    "vite": "^5.4.8",
+    "vite-plugin-pwa": "^0.20.5",
+    "vitest": "^2.1.1",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.skflexbilling.app",
+    "productName": "SK Flex Billing",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}
