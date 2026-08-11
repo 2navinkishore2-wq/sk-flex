@@ -170,6 +170,21 @@ export class LocalDataService implements DataService {
     this.authListeners.forEach((cb) => cb(null));
   }
 
+  /**
+   * Clear Data (All) for demo/local mode: wipe every collection AND the demo
+   * session from localStorage — in local mode this store IS the whole
+   * database, so nothing is kept.
+   */
+  async clearLocalData(): Promise<void> {
+    this.store = { collections: {} };
+    try {
+      localStorage.removeItem(STORE_KEY);
+      localStorage.removeItem(AUTH_KEY);
+    } catch {
+      /* storage unavailable — in-memory store already reset */
+    }
+  }
+
   getAuthUser(): AuthUser | null {
     // Read fresh from storage so a new session (e.g. after logout or tests)
     // always reflects the stored auth state.

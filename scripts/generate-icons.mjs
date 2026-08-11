@@ -207,8 +207,20 @@ function iconFromLogo(logo, size, mode, bg) {
     }
   }
   const scale = CONTENT_SCALE;
-  const dw = Math.round(logo.width * scale);
-  const dh = Math.round(logo.height * scale);
+  // Contain-fit the logo inside the `size*CONTENT_SCALE` safe zone WITHOUT
+  // changing its aspect ratio. The source is 2342x1841 (wider than tall), so
+  // the width fills the safe zone and the height follows proportionally —
+  // the logo is never stretched, and even padding surrounds it on every side
+  // (the reported defect was a full-bleed, distorted square logo).
+  const maxDim = Math.round(size * scale);
+  let dw, dh;
+  if (logo.width >= logo.height) {
+    dw = maxDim;
+    dh = Math.max(1, Math.round((maxDim * logo.height) / logo.width));
+  } else {
+    dh = maxDim;
+    dw = Math.max(1, Math.round((maxDim * logo.width) / logo.height));
+  }
   const sw = Math.min(dw, size);
   const sh = Math.min(dh, size);
   const resized = resizeRGBA(logo.rgba, logo.width, logo.height, sw, sh);

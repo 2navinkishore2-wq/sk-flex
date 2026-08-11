@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas-pro';
-import { dataUrlToBlob, fileNameSafe, isNative } from '../lib/platform';
+import { dataUrlToBlob, fileNameSafe, isNative, runtimePlatform } from '../lib/platform';
 
 const A4_WIDTH_PX = 794; // 210mm @ 96dpi
 
@@ -84,12 +84,27 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
 /**
- * On Android: write the file to the app cache and open the share sheet so
- * the user can save it anywhere (Files, WhatsApp, Drive...). This avoids
- * download-permission quirks on modern Android versions.
+ * On Android: save the file DIRECTLY to the device Downloads folder (never
+ * open the share sheet / Quick Share). The native plugin uses MediaStore on
+ * Android 10+ (no permission) and requests WRITE_EXTERNAL_STORAGE on Android
+ * 9 and below only when required. PDF, JPEG and any other exported format
+ * land as real files in Downloads.
  */
-async function saveFileNative(dataUrl: string, filename: string): Promise<void> {
+export async function saveFileNative(dataUrl: string, filename: string): Promise<void> {
   const base64 = dataUrl.split(',')[1] || '';
+  const mime = /data:(.*?);base64/.exec(dataUrl)?.[1] || 'application/octet-stream';
+  if (runtimePlatform() === 'android') {
+    try {
+      const { saveToDownloads } = await import('../lib/nativeDownload');
+      await saveToDownloads({ data: base64, filename, mime });
+      return;
+    } catch (e) {
+      throw new Error('Could not save the file to Downloads. ' + String((e as Error).message));
+    }
+  }
+  // iOS / fallback: write to the app cache and open the share sheet so the
+  // user can save it anywhere. Windows/web never reach this branch — they use
+  // the plain browser download above.
   const path = `invoices/${filename}`;
   try {
     await Filesystem.writeFile({ path, data: base64, directory: Directory.Cache, recursive: true });

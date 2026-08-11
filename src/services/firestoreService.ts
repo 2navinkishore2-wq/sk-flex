@@ -33,6 +33,8 @@ import {
   serverTimestamp,
   Timestamp,
   onSnapshotsInSync,
+  terminate,
+  writeBatch,
   type Firestore,
   type QueryConstraint,
   type DocumentReference
@@ -467,6 +469,95 @@ export class FirestoreDataService implements DataService {
       }
     );
     return unsub;
+  }
+
+  // ------------------------------------------------------ account data wipe
+  /**
+   * Clear Data (All) — completely remove the CURRENT ACCOUNT'S BUSINESS DATA:
+   *
+   *  1. Permanently deletes every account-owned document from Firestore
+   *     (customers, invoices — including their embedded items — payments,
+   *     ledger, settings, frame rates and the invoice-number counter) under
+   *     users/{uid}/... — the real cloud documents, not just frontend state.
+   *     Only the signed-in account is touched; other users' data, the
+   *     Firebase Authentication account and the profile document are kept.
+   *  2. Terminates Firestore and deletes its IndexedDB cache (plus pending
+   *     local writes) so deleted records can never reappear after a reopen.
+   *
+   * The caller reloads the page afterwards; the account then starts fresh
+   * (empty lists, Outstanding ₹0) while staying signed in.
+   */
+  async clearLocalData(): Promise<void> {
+    if (this.db && this.basePath) {
+      for (const name of ['customers', 'invoices', 'payments', 'ledger', 'frameRates', 'settings']) {
+        await this.deleteAllAccountDocs(name);
+      }
+      // Invoice-number counter — a fresh account starts numbering again.
+      try {
+        await deleteDoc(doc(this.db, this.basePath, 'counters', 'invoices'));
+      } catch {
+        /* best-effort: the counter is re-created on the next allocation */
+      }
+    }
+    // Stop the Firestore client first so its IndexedDB handles are released
+    // and the cache databases below can actually be deleted.
+    if (this.db) {
+      try {
+        await terminate(this.db);
+      } catch {
+        /* already terminated */
+      }
+      this.db = null;
+    }
+    if (typeof indexedDB === 'undefined') return;
+    const names: string[] = [];
+    if (typeof indexedDB.databases === 'function') {
+      try {
+        const dbs = await indexedDB.databases();
+        for (const d of dbs) if (d.name && d.name.startsWith('firestore/')) names.push(d.name);
+      } catch {
+        /* enumeration unsupported (older WebView) — fall through */
+      }
+    }
+    if (names.length === 0 && this.app) {
+      // Fallback for environments without indexedDB.databases(): the known
+      // Firestore cache database names for this project.
+      const project = (this.app.options as { projectId?: string } | undefined)?.projectId;
+      if (project) names.push(`firestore/${project}/(default)`, `firestore/${project}/(default).blob`);
+    }
+    await Promise.all(
+      names.map(
+        (name) =>
+          new Promise<void>((resolve) => {
+            try {
+              const req = indexedDB.deleteDatabase(name);
+              req.onsuccess = () => resolve();
+              req.onerror = () => resolve();
+              req.onblocked = () => resolve();
+            } catch {
+              resolve();
+            }
+          })
+      )
+    );
+  }
+
+  /**
+   * Delete every document in one account-owned collection, in pages of 300
+   * with batched writes (Firestore allows up to 500 writes per commit), so
+   * accounts with many records are handled correctly. Only this user's
+   * basePath (users/{uid}) is ever addressed.
+   */
+  private async deleteAllAccountDocs(name: string): Promise<void> {
+    if (!this.db || !this.basePath) return;
+    for (;;) {
+      const snap = await getDocs(fq(this.col(name), fLimit(300)));
+      if (snap.empty) break;
+      const batch = writeBatch(this.db);
+      for (const d of snap.docs) batch.delete(doc(this.db, this.basePath, name, d.id));
+      await batch.commit();
+      if (snap.docs.length < 300) break;
+    }
   }
 
   // -------------------------------------------------- invoice number counter

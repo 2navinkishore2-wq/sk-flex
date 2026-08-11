@@ -50,6 +50,17 @@ export interface DataService {
   /** Called after first load to repair duplicate invoice numbers across devices. */
   reconcileInvoiceNumbers?(prefix: string, invoices: { id: string; number: string; createdAt: string }[]): Promise<number>;
 
+  // ---- clear account data --------------------------------------------------
+  /**
+   * "Clear Data (All)": permanently remove the CURRENT ACCOUNT'S business
+   * data. On the cloud backend this deletes every account-owned document
+   * from Firestore (customers, invoices, payments, ledger, settings, rates,
+   * counter) AND wipes the local cache so nothing reappears. Other accounts
+   * and the Firebase Authentication session are kept. On the demo/local
+   * backend it wipes the whole local store (that IS the database there).
+   */
+  clearLocalData(): Promise<void>;
+
   // ---- connectivity / sync status -------------------------------------
   isOnline(): boolean;
   onConnectivityChange(cb: (online: boolean) => void): () => void;

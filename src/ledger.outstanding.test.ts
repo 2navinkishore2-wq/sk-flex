@@ -90,6 +90,29 @@ describe('totalOutstandingFromLedger — no ₹10,000 cap, exact totals', () => 
     }
   });
 
+  it('deleted records are reflected immediately (no stale cached balance)', () => {
+    // Two invoices + one payment; then the payment record is deleted — the
+    // receivable must go back UP to the full invoice sum, never a cached
+    // "balanceAfter" left over from before the deletion.
+    const base = [
+      entry({ id: 'i1', customerId: 'c1', amount: 12000, type: 'invoice' }),
+      entry({ id: 'i2', customerId: 'c1', amount: 8000, type: 'invoice' }),
+      entry({ id: 'p1', customerId: 'c1', amount: -5000, type: 'payment' })
+    ];
+    expect(totalOutstandingFromLedger(base)).toBe(15000);
+
+    // Payment deleted -> outstanding returns to 20,000.
+    const afterDelete = base.filter((e) => e.id !== 'p1');
+    expect(totalOutstandingFromLedger(afterDelete)).toBe(20000);
+
+    // New invoice added -> outstanding grows.
+    const afterAdd = [...afterDelete, entry({ id: 'i3', customerId: 'c1', amount: 5000, type: 'invoice' })];
+    expect(totalOutstandingFromLedger(afterAdd)).toBe(25000);
+
+    // A brand-new refresh of the same data (array re-order) never changes it.
+    expect(totalOutstandingFromLedger([...afterAdd].reverse())).toBe(25000);
+  });
+
   it('adjustment entries (invoice edits) are included', () => {
     const entries = [
       entry({ customerId: 'c1', amount: 12000, type: 'invoice' }),

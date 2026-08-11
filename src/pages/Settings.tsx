@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
-import { Save, Download, Upload, FileSpreadsheet, ShieldCheck, Database, LogOut } from 'lucide-react';
+import { Save, Download, Upload, FileSpreadsheet, ShieldCheck, Database, LogOut, Trash2 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import type { BusinessSettings } from '../lib/types';
 import { saveBusinessSettings } from '../services/settings';
 import { customersToCSV, exportBackup, importBackup, invoicesToCSV, triggerTextDownload, type BackupFile } from '../services/backup';
+import { clearAllLocalData } from '../lib/clearData';
 import { APP_NAME } from '../lib/constants';
 import { Button, Card, ConfirmDialog, Field, Row, useToast } from '../components/ui';
 
@@ -14,6 +15,8 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const save = async () => {
@@ -39,6 +42,27 @@ export function SettingsPage() {
       toast('Backup failed: ' + (e as Error).message, 'error');
     } finally {
       setBackingUp(false);
+    }
+  };
+
+  const doClearAll = async () => {
+    setClearing(true);
+    try {
+      await clearAllLocalData(app.service);
+      try {
+        // Survives the reload below so a clear success message is shown after
+        // the data layer restarts with the now-empty account.
+        sessionStorage.setItem('skfb:cleared:msg', 'All account data cleared.');
+      } catch {
+        /* sessionStorage unavailable — toast before reload is enough */
+      }
+      toast('Account data cleared', 'success');
+      // Give the toast a moment to render, then restart the data layer so the
+      // UI shows the freshly emptied account (empty lists, Outstanding ₹0).
+      setTimeout(() => window.location.reload(), 900);
+    } catch (e) {
+      toast('Clear failed: ' + (e as Error).message, 'error');
+      setClearing(false);
     }
   };
 
@@ -131,8 +155,35 @@ export function SettingsPage() {
         <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--text-3)' }}>
           {APP_NAME} v1.0.0 · One account works on Web, Windows and Android.
         </div>
+        <Row style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <Button variant="danger" onClick={() => setClearOpen(true)} disabled={clearing}>
+            <Trash2 size={16} /> {clearing ? 'Clearing…' : 'Clear Data (All)'}
+          </Button>
+          <div style={{ fontSize: 12.5, color: 'var(--text-3)', maxWidth: 340 }}>
+            Permanently deletes this account's customers, invoices, payments, ledger history and rates from the cloud database and this device's cache. Your sign-in stays active.
+          </div>
+        </Row>
       </Card>
 
+      <ConfirmDialog
+        open={clearOpen}
+        title="Clear Data (All)?"
+        danger
+        confirmLabel="Clear everything"
+        message={
+          <div>
+            This <b>permanently deletes ALL of this account's business data</b> — customers,
+            invoices, payments, ledger/history and rates — from the <b>cloud database</b> and this
+            device's cache. It cannot be undone. Your sign-in and Firebase account stay active.
+            Continue?
+          </div>
+        }
+        onConfirm={() => {
+          setClearOpen(false);
+          void doClearAll();
+        }}
+        onCancel={() => setClearOpen(false)}
+      />
       <ConfirmDialog
         open={restoreOpen}
         title="Restore backup?"

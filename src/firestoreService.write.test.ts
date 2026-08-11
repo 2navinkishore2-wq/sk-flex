@@ -24,9 +24,13 @@ const mocks = vi.hoisted(() => ({
   collection: vi.fn((db: unknown, ...path: string[]) => ({ type: 'collection', db, path })),
   doc: vi.fn((c: unknown, ...seg: string[]) => ({ type: 'doc', c, seg, id: 'test-auto-id' })),
   getDoc: vi.fn(),
-  getDocs: vi.fn(async () => ({ docs: [] })),
+  getDocs: vi.fn(async (_q?: unknown): Promise<{ docs: Array<{ id: string }>; empty: boolean }> => ({ docs: [], empty: true })),
   setDoc: vi.fn(),
   deleteDoc: vi.fn(),
+  writeBatch: vi.fn(() => {
+    const b = { delete: vi.fn(), commit: vi.fn(async () => undefined) };
+    return b;
+  }),
   query: vi.fn((...a: unknown[]) => ({ type: 'query', a })),
   where: vi.fn(),
   orderBy: vi.fn(),
@@ -34,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   onSnapshot: vi.fn(),
   runTransaction: vi.fn(),
   serverTimestamp: vi.fn(() => ({ __serverTimestamp: true })),
+  terminate: vi.fn(async () => undefined),
   Timestamp: class Timestamp {
     seconds: number;
     nanoseconds: number;
@@ -88,6 +93,7 @@ vi.mock('firebase/firestore', () => ({
   getDocs: mocks.getDocs,
   setDoc: mocks.setDoc,
   deleteDoc: mocks.deleteDoc,
+  writeBatch: mocks.writeBatch,
   query: mocks.query,
   where: mocks.where,
   orderBy: mocks.orderBy,
@@ -96,7 +102,8 @@ vi.mock('firebase/firestore', () => ({
   runTransaction: mocks.runTransaction,
   serverTimestamp: mocks.serverTimestamp,
   Timestamp: mocks.Timestamp,
-  onSnapshotsInSync: mocks.onSnapshotsInSync
+  onSnapshotsInSync: mocks.onSnapshotsInSync,
+  terminate: mocks.terminate
 }));
 
 vi.mock('./lib/platform', () => ({ isNative: mocks.isNative }));
@@ -195,5 +202,117 @@ describe('raceLocalWrite (FirestoreDataService.add)', () => {
     const regs = (mocks.onSnapshot as unknown as { _regs: Array<{ cb: (s: unknown) => void; errCb: (e: unknown) => void }> })._regs;
     regs[0].cb(localWriteSnapshot);
     await expect(promise).resolves.toBeTypeOf('string');
+  });
+});
+
+describe('clearLocalData — "Clear Data (All)" deletes the account\'s cloud data + cache', () => {
+  it('deletes EVERY account-owned document (all collections) from Firestore, account-scoped, batched', async () => {
+    // customers has 2 docs; every other collection is empty.
+    mocks.getDocs.mockImplementation(async (q?: unknown) => {
+      const col = (q as { a?: Array<{ path?: string[] }> } | undefined)?.a?.[0];
+      const colName = col?.path?.[col.path.length - 1];
+      if (colName === 'customers') return { docs: [{ id: 'c1' }, { id: 'c2' }], empty: false };
+      return { docs: [], empty: true };
+    });
+    const svc = makeService(); // basePath = users/u1
+
+    await svc.clearLocalData();
+
+    // Every account-owned collection was addressed under users/u1.
+    const colCalls = mocks.collection.mock.calls.map((c) => c.slice(1));
+    for (const name of ['customers', 'invoices', 'payments', 'ledger', 'frameRates', 'settings']) {
+      expect(colCalls.some((seg) => seg[0] === 'users/u1' && seg[1] === name)).toBe(true);
+    }
+    // Batched deletes hit ONLY users/u1 (never another account).
+    const batch = mocks.writeBatch.mock.results[0].value as { delete: { mock: { calls: Array<Array<{ seg: string[] }>> } } };
+    const deletedSegs = batch.delete.mock.calls.map((c) => c[0].seg);
+    expect(deletedSegs).toEqual([
+      ['users/u1', 'customers', 'c1'],
+      ['users/u1', 'customers', 'c2']
+    ]);
+    expect(deletedSegs.every((s) => s[0] === 'users/u1')).toBe(true);
+    // The invoice-number counter doc is deleted too.
+    const counterSeg = mocks.deleteDoc.mock.calls.map((c) => c[0].seg);
+    expect(counterSeg).toEqual([['users/u1', 'counters', 'invoices']]);
+    // Firestore client terminated afterwards so the cache can be wiped.
+    expect(mocks.terminate).toHaveBeenCalledTimes(1);
+  });
+
+  it('clearing Account A never touches Account B\'s documents', async () => {
+    mocks.getDocs.mockImplementation(async (q?: unknown) => {
+      const col = (q as { a?: Array<{ path?: string[] }> } | undefined)?.a?.[0];
+      const colName = col?.path?.[col.path.length - 1];
+      if (colName === 'customers') return { docs: [{ id: 'a1' }, { id: 'a2' }], empty: false };
+      return { docs: [], empty: true };
+    });
+    const svc = makeService();
+    svc.basePath = 'users/u1';
+
+    await svc.clearLocalData();
+
+    const batch = mocks.writeBatch.mock.results[0].value as { delete: { mock: { calls: Array<Array<{ seg: string[] }>> } } };
+    for (const call of batch.delete.mock.calls) {
+      expect(call[0].seg[0]).toBe('users/u1'); // Account A only
+      expect(call[0].seg[0]).not.toBe('users/u2'); // Account B (u2) is never referenced
+    }
+    // Account B's data was never even queried: all queries target users/u1.
+    const colPaths = mocks.collection.mock.calls.map((c) => c.slice(1));
+    expect(colPaths.every((seg) => seg[0] === 'users/u1')).toBe(true);
+  });
+
+  it('keeps the auth session usable — the service merely needs the page reload to re-init', async () => {
+    const svc = makeService();
+    await svc.clearLocalData();
+    // After the wipe the in-memory client is terminated; the reload creates a
+    // fresh service and the existing Firebase auth session (never cleared)
+    // restores automatically — assert the wipe did not touch auth APIs.
+    expect(mocks.signOut).not.toHaveBeenCalled();
+    expect(mocks.onAuthStateChanged).toHaveBeenCalledTimes(1); // only the constructor's listener
+  });
+});
+
+describe('clearLocalData (local cache wipe) — "Clear Data (All)" also removes cached copies', () => {
+  afterEach(() => {
+    delete (globalThis as unknown as { indexedDB?: unknown }).indexedDB;
+  });
+
+  it('terminates Firestore and deletes every firestore/* IndexedDB cache database', async () => {
+    const deleted: string[] = [];
+    (globalThis as unknown as { indexedDB: unknown }).indexedDB = {
+      databases: async () => [
+        { name: 'firestore/test-project/(default)' },
+        { name: 'firestore/test-project/(default).blob' },
+        { name: 'unrelated-db' }
+      ],
+      // A FRESH request object per deleteDatabase call: the service assigns
+      // onsuccess to the returned request, so a shared object would let a
+      // later assignment overwrite an earlier promise's resolver.
+      deleteDatabase: (name: string) => {
+        deleted.push(name);
+        const req = {
+          onsuccess: null as (() => void) | null,
+          onerror: null as (() => void) | null,
+          onblocked: null as (() => void) | null
+        };
+        queueMicrotask(() => req.onsuccess?.());
+        return req;
+      }
+    };
+    const svc = makeService();
+
+    await svc.clearLocalData();
+
+    // Firestore client terminated so its handles release before deletion…
+    expect(mocks.terminate).toHaveBeenCalledTimes(1);
+    // …and ONLY the firestore/* caches are deleted (unrelated DB untouched).
+    expect(deleted).toEqual(['firestore/test-project/(default)', 'firestore/test-project/(default).blob']);
+    // The service is now unusable until the page reload re-creates it.
+    await expect(svc.add('customers', { name: 'A' })).rejects.toThrow('not-authenticated');
+  });
+
+  it('is a no-op when IndexedDB is unavailable (Node/SSR)', async () => {
+    const svc = makeService();
+    await expect(svc.clearLocalData()).resolves.toBeUndefined();
+    expect(mocks.terminate).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,6 +1,7 @@
+import { useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppProvider, useApp } from './store/AppContext';
-import { ToastProvider, Spinner } from './components/ui';
+import { ToastProvider, Spinner, useToast } from './components/ui';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/Login';
 import { DashboardPage } from './pages/Dashboard';
@@ -12,6 +13,26 @@ import { CustomerDetailPage } from './pages/CustomerDetail';
 import { LedgerPage } from './pages/Ledger';
 import { RatesPage } from './pages/Rates';
 import { SettingsPage } from './pages/Settings';
+
+/**
+ * Shows the "Clear Data (All)" success message after the data-layer reload:
+ * the Settings page stashes a flag in sessionStorage before reloading, and
+ * this component renders the toast on the next page (cloud data re-synced).
+ */
+function PostClearToast() {
+  const toast = useToast();
+  useEffect(() => {
+    let msg: string | null = null;
+    try {
+      msg = sessionStorage.getItem('skfb:cleared:msg');
+      if (msg) sessionStorage.removeItem('skfb:cleared:msg');
+    } catch {
+      /* sessionStorage unavailable — skip */
+    }
+    if (msg) toast(msg, 'success');
+  }, [toast]);
+  return null;
+}
 
 function Shell() {
   const { user, authLoading, ready } = useApp();
@@ -60,6 +81,7 @@ export default function App() {
     <HashRouter>
       <AppProvider>
         <ToastProvider>
+          <PostClearToast />
           <Shell />
         </ToastProvider>
       </AppProvider>
