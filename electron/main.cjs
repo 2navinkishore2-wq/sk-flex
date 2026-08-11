@@ -1,9 +1,17 @@
 /* SK Flex Billing — Electron main process (Windows EXE)
  *
  * The built web app (dist/) is served over a tiny local HTTP server
- * (http://127.0.0.1:PORT). This gives the app a stable secure origin
+ * (http://localhost:PORT). This gives the app a stable secure origin
  * (localhost) so Firebase Auth popup sign-in, Firestore offline
  * persistence (IndexedDB) and downloads behave exactly like the web build.
+ *
+ * The ORIGIN HOST must be `localhost` (not the 127.0.0.1 IP literal):
+ * Firebase Web Auth validates the app origin against the project's
+ * "Authorized domains" list before opening the Google popup, matching
+ * hostnames exactly (IP entries require an exact hostname match).
+ * `localhost` is a default authorized domain in every Firebase project,
+ * whereas `127.0.0.1` is only allowed if explicitly added in the console
+ * — without it the EXE fails Google Sign-In with auth/unauthorized-domain.
  */
 const { app, BrowserWindow, shell, Menu } = require('electron');
 const http = require('http');
@@ -69,7 +77,9 @@ let win = null;
 async function createWindow() {
   const server = await startServer(0);
   const port = server.address().port;
-  const url = `http://127.0.0.1:${port}/`;
+  // Bind stays on loopback (127.0.0.1) for security; the app ORIGIN uses
+  // `localhost` so Firebase Auth's authorized-domain check passes.
+  const url = `http://localhost:${port}/`;
 
   win = new BrowserWindow({
     width: 1280,
