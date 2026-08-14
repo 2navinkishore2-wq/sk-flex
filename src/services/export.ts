@@ -26,7 +26,8 @@ export async function invoiceToJpegDataUrl(el: HTMLElement, quality = 0.92): Pro
   return canvas.toDataURL('image/jpeg', quality);
 }
 
-export async function downloadInvoiceJpg(el: HTMLElement, filename: string): Promise<void> {
+/** Capture any 794px A4 document as a JPEG download (invoice, statement…). */
+export async function downloadJpg(el: HTMLElement, filename: string): Promise<void> {
   const dataUrl = await invoiceToJpegDataUrl(el);
   if (isNative()) {
     await saveFileNative(dataUrl, filename);
@@ -35,7 +36,8 @@ export async function downloadInvoiceJpg(el: HTMLElement, filename: string): Pro
   triggerDownload(dataUrl, filename);
 }
 
-export async function downloadInvoicePdf(el: HTMLElement, filename: string): Promise<void> {
+/** Capture any 794px A4 document as a multi-page A4 PDF download. */
+export async function downloadPdf(el: HTMLElement, filename: string): Promise<void> {
   const canvas = await captureInvoice(el, 2);
   const imgData = canvas.toDataURL('image/jpeg', 0.92);
 
@@ -77,6 +79,28 @@ export function printInvoice() {
 
 export function invoiceFileName(number: string, ext: 'pdf' | 'jpg'): string {
   return `${fileNameSafe(number)}-invoice.${ext}`;
+}
+
+// ---- entry points: individual invoice vs customer statement --------------
+// One shared capture pipeline, two explicit entry points so an invoice export
+// can never accidentally produce a customer statement (or vice versa).
+
+export async function downloadInvoiceJpg(el: HTMLElement, filename: string): Promise<void> {
+  await downloadJpg(el, filename);
+}
+
+export async function downloadInvoicePdf(el: HTMLElement, filename: string): Promise<void> {
+  await downloadPdf(el, filename);
+}
+
+/** Customer ledger/statement export — the FULL customer statement for the
+ * selected date range (all invoices + payments + running balance). */
+export async function downloadStatementJpg(el: HTMLElement, filename: string): Promise<void> {
+  await downloadJpg(el, filename);
+}
+
+export async function downloadStatementPdf(el: HTMLElement, filename: string): Promise<void> {
+  await downloadPdf(el, filename);
 }
 
 // ------------------------------------------------------------------ native

@@ -31,7 +31,8 @@ vi.mock('./lib/nativeDownload', () => mocks.nativeDownload);
 vi.mock('@capacitor/share', () => mocks.share);
 vi.mock('@capacitor/filesystem', () => mocks.filesystem);
 
-import { saveFileNative } from './services/export';
+import { saveFileNative, invoiceFileName } from './services/export';
+import { statementFileName } from './lib/statement';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -64,6 +65,33 @@ describe('Android download — file goes to Downloads, never Quick Share', () =>
   it('a failed native save surfaces a clear error (not silently swallowed)', async () => {
     mocks.nativeDownload.saveToDownloads.mockRejectedValueOnce(new Error('no space left'));
     await expect(saveFileNative('data:image/jpeg;base64,AA', 'x.jpg')).rejects.toThrow(/Downloads/);
+  });
+});
+
+describe('Export filenames identify the document (never generic)', () => {
+  it('individual invoice export keeps its own number-based filename', () => {
+    expect(invoiceFileName('SK-0042', 'pdf')).toBe('SK-0042-invoice.pdf');
+    expect(invoiceFileName('SK-0042', 'jpg')).toBe('SK-0042-invoice.jpg');
+  });
+
+  it('customer statement export filename carries customer + date range', () => {
+    expect(statementFileName('2026-07-27', '2026-08-08', 'Manipasanga Flex', 'pdf')).toBe(
+      '27-07-2026_To_08-08-2026_Manipasanga_Flex.pdf'
+    );
+    expect(statementFileName('2026-07-27', '2026-08-08', 'Manipasanga Flex', 'jpg')).toBe(
+      '27-07-2026_To_08-08-2026_Manipasanga_Flex.jpg'
+    );
+  });
+
+  it('Android statement export still goes through the native Download plugin (no share sheet)', async () => {
+    mocks.platform.runtimePlatform.mockReturnValue('android');
+    await saveFileNative('data:application/pdf;base64,JVBERi0xLjQ=', '27-07-2026_To_08-08-2026_Manipasanga_Flex.pdf');
+    expect(mocks.nativeDownload.saveToDownloads).toHaveBeenCalledWith({
+      data: 'JVBERi0xLjQ=',
+      filename: '27-07-2026_To_08-08-2026_Manipasanga_Flex.pdf',
+      mime: 'application/pdf'
+    });
+    expect(mocks.share.Share.share).not.toHaveBeenCalled();
   });
 });
 

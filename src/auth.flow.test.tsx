@@ -7,8 +7,9 @@
  * the Android redirect path, and the AppContext authLoading fix (no login
  * flash while Firebase restores a session). */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
+import { HashRouter } from 'react-router-dom';
 import { FirestoreDataService, type FirebaseConfig } from './services/firestoreService';
 
 
@@ -170,6 +171,31 @@ describe('FirestoreDataService auth session lifecycle', () => {
     expect(svc.getAuthUser()).toBeNull();
     expect(svc.basePath).toBe('');
     expect(mocks.setDoc).not.toHaveBeenCalled();
+  });
+
+  it('restart restores the LATEST authenticated account (last successful login wins)', async () => {
+    // Account A signs in, logs out, Account B signs in — then the app
+    // "restarts": the session restore must come back as B, never A.
+    const svc = new FirestoreDataService(CONFIG);
+
+    mocks.authStateCallbacks[0](fbUser('alice')); // Account A signs in
+    expect(svc.basePath).toBe('users/alice');
+    mocks.authStateCallbacks[0](null); // Account A logs out
+    expect(svc.basePath).toBe('');
+
+    mocks.authStateCallbacks[0](fbUser('bob')); // Account B signs in
+    expect(svc.basePath).toBe('users/bob');
+
+    // Fresh app instance (restart): Firebase restores the persisted session.
+    const svc2 = new FirestoreDataService(CONFIG);
+    mocks.authStateCallbacks[1](fbUser('bob'));
+    await flush();
+    expect(svc2.getAuthUser()?.uid).toBe('bob');
+    expect(svc2.basePath).toBe('users/bob');
+    expect(svc2.basePath).not.toBe('users/alice');
+    // Bob's data scope is loaded — Alice's business data can never appear.
+    expect(svc2.basePath.startsWith('users/')).toBe(true);
+    expect(svc2.basePath.split('/')[1]).toBe('bob');
   });
 
   it('sign-in again after sign-out: same user scope, existing profile is NOT duplicated', async () => {
@@ -392,5 +418,63 @@ describe('AppContext authLoading (login-flash fix)', () => {
       mocks.authStateCallbacks[0](fbUser('alice'));
     });
     await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('user:alice'));
+  });
+
+  it('cloud-configured build: the login screen shows the real Google Sign-In button AND keeps Demo mode', async () => {
+    // AppContext is already imported (module cache) with cloud env from the
+    // test above — exactly the production Web/EXE situation: Firebase config
+    // baked in via env. This test only renders the login screen.
+    const { AppProvider } = await import('./store/AppContext');
+    const { LoginPage } = await import('./pages/Login');
+    render(
+      <HashRouter>
+        <AppProvider>
+          <LoginPage />
+        </AppProvider>
+      </HashRouter>
+    );
+    // Real Google Sign-In is offered on Web/Windows whenever Firebase config
+    // is present — never replaced by Demo-only.
+    expect(await screen.findByRole('button', { name: /sign in with google/i })).toBeInTheDocument();
+    // Demo mode remains available alongside Google Sign-In.
+    expect(screen.getByRole('button', { name: /continue without account/i })).toBeInTheDocument();
+  });
+
+  it('Demo option works on a cloud build: swaps to the local backend, Google switches back', async () => {
+    const { AppProvider, useApp } = await import('./store/AppContext');
+    function Probe() {
+      const app = useApp();
+      return (
+        <div>
+          <div data-testid="kind">{app.service.kind}</div>
+          <div data-testid="mode">{app.mode}</div>
+          <div data-testid="uid">{app.user ? app.user.uid : 'none'}</div>
+          <button onClick={() => void app.signInDemo('Demo Shop')}>demo</button>
+          <button onClick={() => void app.signInGoogle()}>google</button>
+        </div>
+      );
+    }
+    render(
+      <HashRouter>
+        <AppProvider>
+          <Probe />
+        </AppProvider>
+      </HashRouter>
+    );
+
+    // A cloud build starts on the Firestore backend.
+    expect(screen.getByTestId('kind').textContent).toBe('firestore');
+
+    // Demo: the app swaps to the device-local backend and signs in locally.
+    fireEvent.click(screen.getByRole('button', { name: 'demo' }));
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('local'));
+    expect(screen.getByTestId('mode').textContent).toBe('local');
+    expect(screen.getByTestId('uid').textContent).toBe('demo-user');
+
+    // Google again: swaps back to the Firestore backend and signs in (popup).
+    mocks.signInWithPopup.mockResolvedValue({ user: fbUser('alice') });
+    fireEvent.click(screen.getByRole('button', { name: 'google' }));
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('firestore'));
+    await waitFor(() => expect(screen.getByTestId('uid').textContent).toBe('alice'));
   });
 });

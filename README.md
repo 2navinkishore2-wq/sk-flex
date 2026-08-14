@@ -34,6 +34,7 @@ Then open the `sk-flex` folder in VS Code. Create `.env` from `.env.example` (se
 | Invoice history + **date-wise grouping by Bill Date** | `src/pages/Invoices.tsx` |
 | **Bill Date** (editable, saved with the bill) + **Cash Payment section with per-payment dates** | `src/pages/Billing.tsx` |
 | Customer ledger + payments | `src/services/ledger.ts`, `payments.ts` |
+| **Customer Statement export (PDF/JPG, date range, opening/closing balance)** | `src/lib/statement.ts`, `src/components/StatementDocument.tsx`, `src/pages/CustomerDetail.tsx` |
 | Product rates + **Frame Rate Table** | `src/pages/Rates.tsx`, `src/services/settings.ts` |
 | Invoice settings + backup/export + **Clear Data (All)** | `src/pages/Settings.tsx`, `src/services/backup.ts` |
 | Invoice PDF / JPG / Print (A4) | `src/services/export.ts`, `src/components/InvoiceDocument.tsx` |
@@ -202,6 +203,27 @@ npm run deploy:web             # type-check + build + deploy hosting, rules, ind
 
 The root `firebase.json` configures Hosting (public `dist/`, SPA rewrite, immutable cache headers for hashed assets, `no-cache` for the service worker) and points the Firestore rules/indexes at `firebase/firestore.rules` and `firebase/firestore.indexes.json`. After deploying, add your Hosting domain to **Authentication → Settings → Authorized domains**.
 
+### Deploying to GitHub Pages (the production Web build)
+
+`.github/workflows/deploy-pages.yml` deploys the Web build (PWA) to GitHub Pages on every push to `main` (or `workflow_dispatch`). The Firebase Web client configuration is **public by design** (it is embedded in every browser bundle and protected by the Firestore rules — never a secret), so the workflow feeds it into the build from **repository variables** — the repo itself stays free of credentials:
+
+1. GitHub repo → **Settings → Secrets and variables → Actions → Variables** — add these (values from Firebase Console → Project settings → General → Your apps → Web app → SDK setup):
+
+   | Variable | Value |
+   |---|---|
+   | `VITE_FIREBASE_API_KEY` | your project's Web API key |
+   | `VITE_FIREBASE_AUTH_DOMAIN` | `your-project.firebaseapp.com` |
+   | `VITE_FIREBASE_PROJECT_ID` | your project id |
+   | `VITE_FIREBASE_STORAGE_BUCKET` | `your-project.appspot.com` |
+   | `VITE_FIREBASE_MESSAGING_SENDER_ID` | sender id |
+   | `VITE_FIREBASE_APP_ID` | web app id |
+   | `VITE_GOOGLE_WEB_CLIENT_ID` | Web OAuth client ID (client_type 3) — used by the Android native sign-in; harmless on Web |
+
+2. In Firebase Console → **Authentication → Settings → Authorized domains**, add the Pages origin (`https://<owner>.github.io`, plus your custom domain if any) — otherwise Google Sign-In is rejected on the deployed site.
+3. Push to `main` (or run the workflow manually) — the built site then includes the config and shows the real **Sign in with Google** button.
+
+A fresh clone without those variables still builds and runs in **Demo mode** exactly like a local build without `.env` — the build never fails on missing config.
+
 ---
 
 ## 7. Build the Android APK
@@ -273,6 +295,8 @@ npm run electron:build       # builds web app + packages the Windows installer
 
 Output in `release/` (an NSIS installer + portable exe). The EXE opens its own window, supports printing (Ctrl+P), PDF/JPG download, cloud sync and offline billing. First run may show a SmartScreen warning because the app is unsigned — click *More info → Run anyway*, or sign it later with a code-signing certificate.
 
+**Google sign-in persists across restarts.** The EXE serves the app from a **fixed** `http://localhost:38991` origin (falling back to a random port only if that one is busy). Because Chromium keeps localStorage/IndexedDB per origin, the Firebase session and offline cache survive closing and reopening the EXE: sign in once, and the next launch restores that account automatically (last successfully signed-in account wins). Only an explicit **Sign out** clears the session, and signing in with a different account then persists that one.
+
 ---
 
 ## 9. How it all works
@@ -295,6 +319,10 @@ Firestore's offline persistence stores all data on the device (IndexedDB / WebVi
 - Invoices snapshot their own items, rates and totals — **changing today's rate never touches old invoices**.
 - Invoice numbers come from an **atomic Firestore transaction** (a counter document), so two devices can't be handed the same number. If two devices somehow create a bill offline at the same time, a startup reconciliation pass renumbers the newer duplicate and flags it.
 - Multi-device edits to the same record use **last-write-wins per field** (documented strategy). Payments and ledger edits append entries rather than overwriting history.
+
+### Customer Statement / Ledger export
+
+On **Customer detail → Statement**, pick a start/end date and download a **PDF** or **JPG** of the customer's full statement: opening balance, every invoice (with its items), every cash receipt/payment (with method and Payment Date), the running balance and the closing/outstanding balance, in chronological order. Payments are never hidden just because they fall between invoices. The exported filename identifies the document, e.g. `27-07-2026_To_08-08-2026_Manipasanga_Flex.pdf` / `.jpg`. This is a separate export from the per-invoice **Download PDF/JPG** on the invoice view — the two never mix.
 
 ### Backup
 The cloud database is the primary backup. `Settings → Export Backup` downloads a JSON of everything (customers, invoices, payments, ledger, frame rates, settings); `Restore Backup` re-imports it. Invoices and customers also export to CSV.

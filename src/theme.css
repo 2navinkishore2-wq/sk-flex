@@ -364,6 +364,28 @@ table.inv-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .inv-paid-line { padding: 0 30px 8px; }
 .inv-paid-line .pill { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 11.5px; font-weight: 800; }
 
+/* ============ customer statement document ============ */
+.stmt-bal {
+  display: flex; gap: 18px; padding: 12px 30px 4px;
+  font-size: 12.5px; color: #334155;
+}
+.stmt-bal-item { display: flex; flex-direction: column; gap: 2px; }
+.stmt-bal-item .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
+.stmt-bal-item .v { font-weight: 800; color: var(--navy-900); }
+.stmt-tbl { font-size: 12px; }
+.stmt-tbl td { vertical-align: top; }
+.stmt-tbl .stmt-open td, .stmt-tbl .stmt-close td { background: #f1f5f9 !important; }
+.stmt-tbl .stmt-open td:first-child, .stmt-tbl .stmt-close td:first-child { color: #64748b; font-size: 11px; }
+.stmt-tbl .stmt-close td { border-top: 2px solid var(--navy-900); }
+.stmt-tbl .stmt-pay-row td { background: #f0fdf4; }
+.stmt-tbl .stmt-pay-row td:first-child { color: #065f46; }
+.stmt-items { margin-top: 3px; padding: 3px 0 2px; border-top: 1px dashed #cbd5e1; }
+.stmt-item { display: flex; gap: 8px; align-items: baseline; font-size: 11px; color: #475569; }
+.stmt-item .si-name { font-weight: 600; color: #334155; min-width: 0; flex: 1; }
+.stmt-item .si-size { color: #64748b; white-space: nowrap; }
+.stmt-item .si-qty { color: #64748b; white-space: nowrap; }
+.stmt-item .si-amt { font-weight: 600; color: #334155; min-width: 58px; text-align: right; font-variant-numeric: tabular-nums; }
+
 /* ============ print ============ */
 @media print {
   body * { visibility: hidden !important; }

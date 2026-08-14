@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
 import App from './App';
 import { LocalDataService } from './services/localService';
-import { createInvoice } from './services/invoices';
+import { createInvoice, updateInvoice } from './services/invoices';
 import { recordPayment } from './services/payments';
 import { createCustomer } from './services/customers';
 import { InvoiceDocument } from './components/InvoiceDocument';
@@ -108,6 +108,24 @@ describe('Bill Date', () => {
     const loaded = await reloadInvoices();
     expect(loaded).toHaveLength(1);
     expect(loaded[0].date).toBe('2026-08-06');
+  });
+
+  it('11 — editing one invoice never changes another invoice’s date; records stay separate', async () => {
+    const { svc, customer } = await setup();
+    const invA = await createInvoice(svc, draft(customer, { date: '2026-07-27', items: custom2000 }));
+    const invB = await createInvoice(svc, draft(customer, { date: '2026-08-03' }));
+
+    // Edit invoice A (change its items/amount) keeping A's own Bill Date.
+    await updateInvoice(svc, invA, draft(customer, { date: '2026-07-27', items: custom2000 }));
+
+    const loaded = await reloadInvoices();
+    expect(loaded).toHaveLength(2); // still two separate records
+    const a = loaded.find((i) => i.id === invA.id)!;
+    const b = loaded.find((i) => i.id === invB.id)!;
+    expect(a.date).toBe('2026-07-27'); // A keeps its historical Bill Date
+    expect(a.total).toBe(2000); // A's edit applied to A only
+    expect(b.date).toBe('2026-08-03'); // B untouched
+    expect(b.total).toBe(750);
   });
 
   it('6 — Bill Date and Payment Date stay independent (payment never overwrites it)', async () => {

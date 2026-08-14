@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { AuthUser, BusinessSettings, Customer, FramePrice, Invoice, LedgerEntry, Payment, ProductRates, SyncStatus } from '../lib/types';
 import type { DataService, QuerySpec } from '../services/data';
 import { createService, type DataMode, type ServiceBundle } from '../services/index';
+import { LocalDataService } from '../services/localService';
 import { DEFAULT_RATES, DEFAULT_SETTINGS } from '../lib/constants';
 
 interface AppStore {
@@ -34,7 +35,16 @@ export function useApp(): AppStore {
   return v;
 }
 
-const bundle: ServiceBundle = createService();
+/**
+ * The backend chosen at build time from the environment. On a cloud build
+ * (Firebase configured) the app can STILL enter Demo mode: Demo runs on the
+ * device-local backend (localStorage) while Google sign-in uses the cloud
+ * backend — the app swaps between them at runtime, so the Web/EXE/APK login
+ * screen always offers BOTH a working Google Sign-In and a working Demo
+ * option. On a build without Firebase config, cloudBundle IS the local
+ * service and nothing is ever swapped.
+ */
+const cloudBundle: ServiceBundle = createService();
 
 function useLiveCollection<T extends { id: string }>(svc: DataService, name: string, spec?: QuerySpec): T[] {
   const [items, setItems] = useState<T[]>([]);
@@ -59,8 +69,10 @@ function useLiveCollection<T extends { id: string }>(svc: DataService, name: str
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const { service, mode, configured } = bundle;
-  const [user, setUser] = useState<AuthUser | null>(service.getAuthUser());
+  const [service, setService] = useState<DataService>(cloudBundle.service);
+  const [mode, setMode] = useState<DataMode>(cloudBundle.mode);
+  const [configured, setConfigured] = useState<boolean>(cloudBundle.configured);
+  const [user, setUser] = useState<AuthUser | null>(cloudBundle.service.getAuthUser());
   const [authLoading, setAuthLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(service.getSyncStatus());
   const [syncError, setSyncError] = useState<string | null>(service.getLastSyncError());
@@ -128,11 +140,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [user, invoices.length, service, business.invoicePrefix]);
 
   const signInGoogle = useCallback(async () => {
-    await service.signInWithGoogle();
+    if (service.kind === 'firestore') {
+      await service.signInWithGoogle();
+      return;
+    }
+    // Coming from a Demo session: switch back to the cloud backend. If the
+    // cloud session still exists (e.g. the user was signed in before going
+    // demo), restore it directly; otherwise run the real Google sign-in.
+    const cloud = cloudBundle.service;
+    setService(cloud);
+    setMode(cloudBundle.mode);
+    setConfigured(cloudBundle.configured);
+    const u = cloud.getAuthUser() ?? (await cloud.signInWithGoogle());
+    setUser(u);
+    setAuthLoading(false);
   }, [service]);
 
   const signInDemo = useCallback(async (name: string) => {
-    await service.signInDemo(name);
+    if (service.kind === 'local') {
+      await service.signInDemo(name);
+      return;
+    }
+    // Cloud build + Demo option: run the demo session on the device-local
+    // backend so Demo keeps working even when Firebase is configured.
+    const local = new LocalDataService();
+    const u = await local.signInDemo(name);
+    setService(local);
+    setMode('local');
+    setConfigured(cloudBundle.configured);
+    setUser(u);
+    setAuthLoading(false);
   }, [service]);
 
   const signOut = useCallback(async () => {

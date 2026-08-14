@@ -1,16 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Pencil, HandCoins, IndianRupee, Wallet, AlertCircle, Plus, Users } from 'lucide-react';
+import { ArrowLeft, Pencil, HandCoins, IndianRupee, Wallet, AlertCircle, Plus, Users, FileDown, Image as ImageIcon } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { ledgerStats, sortLedgerChronological } from '../services/ledger';
 import { updateCustomer, type CustomerInput } from '../services/customers';
 import { recordPayment } from '../services/payments';
-import { formatDate, formatDateTime, formatINR } from '../lib/format';
+import { formatDate, formatDateTime, formatINR, todayISO } from '../lib/format';
+import { buildCustomerStatement, entryBusinessDate, statementFileName } from '../lib/statement';
+import { downloadStatementJpg, downloadStatementPdf } from '../services/export';
+import { StatementDocument } from '../components/StatementDocument';
 import { Button, Card, EmptyState, Field, Modal, Row, StatCard, StatusBadge, useToast } from '../components/ui';
 
 export function CustomerDetailPage() {
   const { id } = useParams();
-  const { customers, invoices, ledger, payments, service } = useApp();
+  const { customers, invoices, ledger, payments, service, business } = useApp();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -19,7 +22,9 @@ export function CustomerDetailPage() {
   const [editInput, setEditInput] = useState<CustomerInput>({ name: '', phone: '', address: '', email: '' });
   const [editError, setEditError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState<'ledger' | 'invoices'>('ledger');
+  const [tab, setTab] = useState<'ledger' | 'invoices' | 'statement'>('ledger');
+  const [statementRange, setStatementRange] = useState<{ start: string; end: string } | null>(null);
+  const [exporting, setExporting] = useState<'pdf' | 'jpg' | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [payInvoice, setPayInvoice] = useState('');
   const [payAmount, setPayAmount] = useState('');
@@ -39,6 +44,47 @@ export function CustomerDetailPage() {
     () => payments.filter((p) => p.customerId === id).sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1)),
     [payments, id]
   );
+
+  // Earliest business date in this customer's ledger (for the statement's
+  // default start date). Invoice entries use their Bill Date; payments their
+  // Payment Date — never the recording time.
+  const earliestLedgerDate = useMemo(() => {
+    const dates = customerLedger.map((e) => entryBusinessDate(e, invoices)).filter((d) => d !== '');
+    return dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : '';
+  }, [customerLedger, invoices]);
+
+  // (Re)initialize the statement range for the selected customer once their
+  // ledger data is available; never clobbers a range the user picked.
+  useEffect(() => {
+    setStatementRange(null);
+  }, [id]);
+  useEffect(() => {
+    if (!earliestLedgerDate) return;
+    setStatementRange((prev) => prev ?? { start: earliestLedgerDate, end: todayISO() });
+  }, [earliestLedgerDate]);
+
+  const statement = useMemo(() => {
+    if (!customer || !statementRange) return null;
+    const { start, end } = statementRange;
+    if (start > end) return null; // invalid range — the UI shows the error
+    return buildCustomerStatement(customer, ledger, invoices, payments, start, end);
+  }, [customer, ledger, invoices, payments, statementRange]);
+
+  const doStatementExport = async (kind: 'pdf' | 'jpg') => {
+    const node = document.getElementById('statement-paper') as HTMLElement | null;
+    if (!node || !statement || !customer) return;
+    setExporting(kind);
+    try {
+      const filename = statementFileName(statement.startDate, statement.endDate, customer.name, kind);
+      if (kind === 'pdf') await downloadStatementPdf(node, filename);
+      else await downloadStatementJpg(node, filename);
+      toast(`Statement ${kind.toUpperCase()} downloaded`, 'success');
+    } catch (e) {
+      toast(`Statement ${kind.toUpperCase()} failed: ${(e as Error).message}`, 'error');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   if (!customer) {
     return (
@@ -133,6 +179,7 @@ export function CustomerDetailPage() {
       <div className="chips" style={{ marginBottom: 14 }}>
         <button className={`chip${tab === 'ledger' ? ' active' : ''}`} onClick={() => setTab('ledger')}>Ledger</button>
         <button className={`chip${tab === 'invoices' ? ' active' : ''}`} onClick={() => setTab('invoices')}>Invoices ({customerInvoices.length})</button>
+        <button className={`chip${tab === 'statement' ? ' active' : ''}`} onClick={() => setTab('statement')}>Statement</button>
       </div>
 
       {tab === 'ledger' ? (
@@ -201,6 +248,44 @@ export function CustomerDetailPage() {
                 </table>
               </div>
             </div>
+          )}
+        </Card>
+      ) : tab === 'statement' ? (
+        <Card title="Customer Statement / Ledger" right={<span style={{ fontWeight: 800, color: (statement?.closingBalance ?? 0) > 0 ? 'var(--red)' : 'var(--green)' }}>{statement ? formatINR(statement.closingBalance) : '—'}</span>}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 14 }}>
+            Full account statement for the selected period — every invoice, payment and adjustment in chronological order, with running balance. This is a customer statement export, separate from individual invoice downloads.
+          </div>
+          {customerLedger.length === 0 ? (
+            <EmptyState icon={<Wallet size={24} />} title="No ledger transactions" text="Create an invoice or record a payment to generate a statement." />
+          ) : (
+            <>
+              <div className="input-row" style={{ marginBottom: 14, maxWidth: 520 }}>
+                <Field label="Statement start date">
+                  <input className="input" type="date" value={statementRange?.start || ''} onChange={(e) => setStatementRange((r) => ({ start: e.target.value, end: r?.end || todayISO() }))} data-testid="statement-start" />
+                </Field>
+                <Field label="Statement end date">
+                  <input className="input" type="date" value={statementRange?.end || ''} onChange={(e) => setStatementRange((r) => ({ start: r?.start || '', end: e.target.value }))} data-testid="statement-end" />
+                </Field>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', paddingBottom: 13 }}>
+                  <Button size="sm" onClick={() => void doStatementExport('pdf')} disabled={exporting !== null || !statement}>
+                    {exporting === 'pdf' ? 'Generating…' : <><FileDown size={15} /> Statement PDF</>}
+                  </Button>
+                  <Button size="sm" variant="dark" onClick={() => void doStatementExport('jpg')} disabled={exporting !== null || !statement}>
+                    {exporting === 'jpg' ? 'Generating…' : <><ImageIcon size={15} /> Statement JPG</>}
+                  </Button>
+                </div>
+              </div>
+              {statementRange && statementRange.start > statementRange.end && (
+                <div className="form-error" style={{ marginBottom: 12 }}>Start date is after end date — choose a valid range.</div>
+              )}
+              <div className="invoice-scale-wrap">
+                <div style={{ maxWidth: 794, margin: '0 auto' }}>
+                  {statement ? (
+                    <StatementDocument statement={statement} business={business} />
+                  ) : null}
+                </div>
+              </div>
+            </>
           )}
         </Card>
       ) : (

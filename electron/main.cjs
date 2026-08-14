@@ -20,6 +20,20 @@ const path = require('path');
 
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 
+// FIXED local-server port (was random on every launch). The app origin is
+// `http://localhost:PORT`, and Chromium partitions localStorage/IndexedDB by
+// ORIGIN INCLUDING THE PORT. With a random port every EXE start produced a
+// fresh origin, so the persisted Firebase Auth session (and the Firestore
+// offline cache) never survived a restart — the user had to do Google
+// Sign-In again every time. A stable port keeps the origin identical across
+// launches: Firebase Auth restores the session automatically via
+// onAuthStateChanged and the user lands straight back in their account.
+//
+// If the fixed port is already taken (e.g. a second instance), the app falls
+// back to a random free port and keeps working — only persistence across
+// restarts is unavailable in that rare case.
+const APP_PORT = 38991;
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -75,7 +89,16 @@ function startServer(port) {
 let win = null;
 
 async function createWindow() {
-  const server = await startServer(0);
+  // Try the fixed port first so the session origin stays stable between runs.
+  let server;
+  try {
+    server = await startServer(APP_PORT);
+  } catch (e) {
+    if (e && e.code !== 'EADDRINUSE') throw e;
+    // Port busy (another instance is running): use any free port. This
+    // instance keeps working; persistence belongs to the first instance.
+    server = await startServer(0);
+  }
   const port = server.address().port;
   // Bind stays on loopback (127.0.0.1) for security; the app ORIGIN uses
   // `localhost` so Firebase Auth's authorized-domain check passes.
