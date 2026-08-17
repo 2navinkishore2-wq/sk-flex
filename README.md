@@ -33,7 +33,7 @@ Then open the `sk-flex` folder in VS Code. Create `.env` from `.env.example` (se
 | Customers (add/edit/search/delete, invoices, ledger) | `src/pages/Customers.tsx`, `CustomerDetail.tsx` |
 | Invoice history + **date-wise grouping by Bill Date** | `src/pages/Invoices.tsx` |
 | **Bill Date** (editable, saved with the bill) + **Cash Payment section with per-payment dates** | `src/pages/Billing.tsx` |
-| Customer ledger + payments | `src/services/ledger.ts`, `payments.ts` |
+| Customer ledger + payments (**customer-level, no invoice selection, overpay → advance credit**) | `src/services/ledger.ts`, `payments.ts` |
 | **Customer Statement export (PDF/JPG, date range, opening/closing balance)** | `src/lib/statement.ts`, `src/components/StatementDocument.tsx`, `src/pages/CustomerDetail.tsx` |
 | Product rates + **Frame Rate Table** | `src/pages/Rates.tsx`, `src/services/settings.ts` |
 | Invoice settings + backup/export + **Clear Data (All)** | `src/pages/Settings.tsx`, `src/services/backup.ts` |
@@ -100,7 +100,7 @@ npm install
 npm run dev          # opens http://localhost:5173
 ```
 
-On the login screen choose **"Continue without account (Demo)"**. Everything (customers, billing, ledger, PDF/JPG/print, backup) works locally in the browser using localStorage. This is also the offline path — Demo mode is the same code, just without cloud sync.
+On the login screen choose **"Continue without account (Demo)"** (or **Sign in with Google** when the app has Firebase config — Web, Windows and Android all offer both). Everything (customers, billing, payments, ledger, statement, PDF/JPG/print, backup) works locally in the browser using localStorage. This is also the offline path — Demo mode is the same code, just without cloud sync.
 
 In VS Code: open the folder, then **Terminal → New Terminal** and run the commands above. The app auto-reloads on save (`npm run dev`).
 
@@ -318,7 +318,20 @@ Firestore's offline persistence stores all data on the device (IndexedDB / WebVi
 - Every record has a unique id + `createdAt`/`updatedAt`.
 - Invoices snapshot their own items, rates and totals — **changing today's rate never touches old invoices**.
 - Invoice numbers come from an **atomic Firestore transaction** (a counter document), so two devices can't be handed the same number. If two devices somehow create a bill offline at the same time, a startup reconciliation pass renumbers the newer duplicate and flags it.
-- Multi-device edits to the same record use **last-write-wins per field** (documented strategy). Payments and ledger edits append entries rather than overwriting history.
+- Multi-device edits to the same record use **last-write-wins per field** (documented strategy). Payments append ledger entries; invoice edits rewrite the invoice's own ledger entry in place so the statement always shows the corrected value. Running balances shown to the user are always recomputed from the recorded amounts, so they stay correct regardless of edit order.
+
+### Payments, credit & outstanding
+
+Payments are **customer-level** — they never ask you to pick an invoice:
+
+- On **Customer detail → Receive Payment** (or **Record Payment** on an invoice) just enter the **amount**, the **Payment Date** (the day the money actually arrived — always separate from any invoice's Bill Date), the **method** and an optional note, then save.
+- There is **no maximum**: the full amount you type is stored exactly as received. If the customer pays more than the balance due (e.g. outstanding ₹1,500, customer pays ₹2,500), the ₹1,000 above the balance becomes the customer's **advance credit**.
+- That credit is **automatically applied to the customer's next invoice**: a new ₹3,000 bill with ₹1,000 credit on account shows Paid ₹1,000 / Balance ₹2,000. The invoice PDF/JPG shows an **Advance / Credit applied** line so the customer can see it.
+- The customer's statement shows the real money movement: the invoice debit, the full payment credit, and the running balance going negative (advance) and back positive as credit is applied — no confusing internal rows.
+
+### Invoice edits (no "edited" transactions)
+
+Editing an invoice **corrects it in place**. The invoice's ledger entry is rewritten to the corrected value, so the customer statement and ledger show only the final invoice amount — e.g. an invoice corrected from ₹3,075 to ₹2,585.50 simply appears as **Invoice SK-0001 ₹2,585.50**. The statement never shows "Invoice … edited / balance reduced / balance increased" rows, and the PDF/JPG always prints the corrected invoice. Billing-time payments entered on the invoice keep their own Payment Dates; payments already received from the customer stay allocated to the invoice.
 
 ### Customer Statement / Ledger export
 

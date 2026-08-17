@@ -93,8 +93,10 @@ export function InvoiceViewPage() {
   const doPayment = async () => {
     setPayBusy(true);
     try {
-      await recordPayment(app.service, invoice, {
-        invoiceId: invoice.id,
+      // Payments are customer-level: recorded against the whole account (no
+      // invoice selection, no balance cap) and allocated oldest-first. Any
+      // amount above the balance due becomes advance credit.
+      await recordPayment(app.service, invoice.customerId, {
         amount: parseFloat(payAmount) || 0,
         date: payDate,
         method: payMethod,
@@ -191,9 +193,13 @@ export function InvoiceViewPage() {
         </Card>
       </div>
 
-      {/* payment modal */}
-      <Modal open={payOpen} title={`Record payment — ${invoice.number}`} onClose={() => setPayOpen(false)} width={440}>
-        <Field label={`Amount (balance due ${formatINR(invoice.balance)})`}>
+      {/* payment modal — customer-level, no invoice required, no cap */}
+      <Modal open={payOpen} title={`Record payment — ${invoice.customer.name}`} onClose={() => setPayOpen(false)} width={440}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 12 }}>
+          Enter the full amount received (this invoice's balance due is {formatINR(invoice.balance)}).
+          Any amount above the balance due becomes advance credit for this customer's future bills.
+        </div>
+        <Field label="Amount (₹)">
           <input className="input" type="number" inputMode="decimal" placeholder="0" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} autoFocus />
         </Field>
         <div className="input-row">

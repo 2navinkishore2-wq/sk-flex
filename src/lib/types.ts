@@ -63,6 +63,10 @@ export interface Invoice {
   balance: number;
   status: InvoiceStatus;
   note?: string;
+  /** Portion of this invoice settled from the customer's advance/credit balance
+   * (e.g. an earlier overpayment). Real money movement lives in the ledger;
+   * this is a display record of how much of the credit was applied here. */
+  creditApplied?: number;
   version: number;
   renumbered?: boolean; // true if sync reconciliation changed the number
   createdAt: string; // ISO

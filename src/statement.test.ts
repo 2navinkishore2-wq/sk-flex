@@ -190,7 +190,9 @@ describe('buildCustomerStatement — the full customer ledger', () => {
     expect(s.rows).toHaveLength(8); // the other customer's entry never appears
   });
 
-  it('adjustment entries appear with debit/credit split and affect the running balance', () => {
+  it('invoice-edit adjustments are FOLDED into the invoice row — the statement never shows "edited" entries', () => {
+    // A legacy adjustment left by the old edit flow: SK-0042 was 8000, edited
+    // down by 500. The statement must show ONLY the corrected invoice value.
     const adj: LedgerEntry = {
       id: 'la',
       customerId: 'c1',
@@ -205,10 +207,38 @@ describe('buildCustomerStatement — the full customer ledger', () => {
       createdAt: '2026-07-28T09:00:00.000Z'
     };
     const s = buildCustomerStatement(CUSTOMER, [...LEDGER, adj], INVOICES, PAYMENTS, '2026-07-27', '2026-08-08');
-    const row = s.rows.find((r) => r.key === 'la')!;
-    expect(row.type).toBe('adjustment');
-    expect(row.credit).toBe(500);
-    expect(row.date).toBe('2026-07-27'); // tied to the linked invoice's Bill Date
+    // No separate adjustment / "edited" row anywhere:
+    expect(s.rows.some((r) => r.key === 'la')).toBe(false);
+    expect(s.rows.some((r) => r.type === 'adjustment')).toBe(false);
+    // SK-0042 shows its FINAL corrected value (8000 − 500 = 7500):
+    const row = s.rows.find((r) => r.invoiceNumber === 'SK-0042')!;
+    expect(row.type).toBe('invoice');
+    expect(row.debit).toBe(7500);
+    expect(row.credit).toBe(0);
+    expect(row.date).toBe('2026-07-27'); // the invoice's Bill Date
+    // Running balance stays exactly equal to the raw ledger sum (nothing lost):
+    expect(s.totalDebit).toBe(27500); // 28000 − 500
+    expect(s.closingBalance).toBe(29500); // 30000 − 500
+  });
+
+  it('a netted-down invoice still carries its corrected items', () => {
+    const adj: LedgerEntry = {
+      id: 'la2',
+      customerId: 'c1',
+      type: 'adjustment',
+      date: '2026-07-28T09:00:00.000Z',
+      paymentDate: '',
+      description: 'Invoice SK-0042 edited (balance reduced by 500)',
+      invoiceId: 'i2',
+      invoiceNumber: 'SK-0042',
+      amount: -500,
+      balanceAfter: 0,
+      createdAt: '2026-07-28T09:00:00.000Z'
+    };
+    const s = buildCustomerStatement(CUSTOMER, [...LEDGER, adj], INVOICES, PAYMENTS, '2026-07-27', '2026-08-08');
+    const row = s.rows.find((r) => r.invoiceNumber === 'SK-0042')!;
+    expect(row.items).toHaveLength(1);
+    expect(row.items![0]).toMatchObject({ label: 'Flex', rate: 7.5, amount: 750 });
   });
 });
 

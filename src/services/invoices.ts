@@ -1,7 +1,7 @@
-import type { Invoice, InvoiceDraft, InvoiceStatus, PaymentDraft } from '../lib/types';
+import type { Invoice, InvoiceDraft, InvoiceStatus, LedgerEntry, Payment, PaymentDraft } from '../lib/types';
 import { calcBalance, invoiceStatus, invoiceTotals } from '../lib/billing';
 import { nowISO, todayISO } from '../lib/format';
-import { round2, sub, sum } from '../lib/money';
+import { add, round2, sub, sum } from '../lib/money';
 import type { DataService } from './data';
 import { addLedgerEntry } from './ledger';
 
@@ -24,18 +24,6 @@ function normalizePayments(draft: InvoiceDraft): PaymentDraft[] {
   return [];
 }
 
-export function computeInvoiceTotals(draft: InvoiceDraft) {
-  const { subtotal, discount, total } = invoiceTotals(draft.items, draft.discountType, draft.discountValue);
-  const paid = round2(Math.min(Math.max(0, draft.paid), total));
-  const balance = calcBalance(total, paid);
-  const status: InvoiceStatus = invoiceStatus(total, paid);
-  return { subtotal, discount, total, paid, balance, status };
-}
-
-export interface SavedInvoice {
-  invoice: Invoice;
-}
-
 /** Validate a draft before saving. Returns a friendly message or null. */
 export function validateInvoiceDraft(draft: InvoiceDraft): string | null {
   if (!draft.customerId || !draft.customer.name) return 'Select a customer.';
@@ -55,14 +43,57 @@ export function validateInvoiceDraft(draft: InvoiceDraft): string | null {
   return null;
 }
 
-/** Create a new invoice + ledger entries (invoice debit, optional payments). */
+/**
+ * The customer's current advance/credit balance (₹): how much of the money
+ * they have paid is not yet covered by invoices. Derived from the ledger
+ * (sum of all entries) — when the running balance is negative the customer is
+ * ahead, and that credit automatically covers the next invoice.
+ */
+async function availableCredit(svc: DataService, customerId: string): Promise<number> {
+  const all = await svc.query<LedgerEntry>('ledger');
+  const balance = round2(
+    sum(all.filter((e) => e.customerId === customerId).map((e) => Number(e.amount) || 0))
+  );
+  return round2(Math.max(0, -balance));
+}
+
+/** Payment records attached to one invoice (full list fetch = offline-safe). */
+async function invoicePaymentRecords(svc: DataService, invoiceId: string): Promise<Payment[]> {
+  const all = await svc.query<Payment>('payments', { orderBy: { field: 'createdAt', dir: 'desc' } });
+  return all.filter((p) => p.invoiceId === invoiceId);
+}
+
+/**
+ * Invoice settlement state: paid = billing-time cash + credit applied, capped
+ * at the total (anything beyond becomes customer credit in the ledger).
+ */
+function settleInvoice(total: number, cashPaid: number, creditApplied: number): { paid: number; balance: number; status: InvoiceStatus } {
+  const paid = round2(Math.min(Math.max(0, total), add(Math.max(0, cashPaid), Math.max(0, creditApplied))));
+  const balance = calcBalance(total, paid);
+  const status = invoiceStatus(total, paid);
+  return { paid, balance, status };
+}
+
+/** Create a new invoice + ledger entries (invoice debit, optional payments).
+ *
+ * If the customer already has advance/credit (an earlier overpayment), that
+ * credit is automatically applied to this invoice first: the invoice's `paid`
+ * includes the applied credit, so the remaining balance is total − credit −
+ * cash received at billing. The ledger only records the invoice's full total
+ * and the actual cash payments — the credit itself is the customer's existing
+ * (negative) running balance, so it carries forward naturally and is never
+ * double-counted.
+ */
 export async function createInvoice(svc: DataService, draft: InvoiceDraft): Promise<Invoice> {
   const err = validateInvoiceDraft(draft);
   if (err) throw new Error(err);
   const billDate = draft.date || todayISO();
   const payments = normalizePayments(draft);
-  const paidTotal = round2(sum(payments.map((p) => p.amount)));
-  const t = computeInvoiceTotals({ ...draft, paid: paidTotal, date: billDate });
+  const cashPaid = round2(sum(payments.map((p) => p.amount)));
+  const t = invoiceTotals(draft.items, draft.discountType, draft.discountValue);
+  const credit = await availableCredit(svc, draft.customerId);
+  const creditApplied = round2(Math.min(credit, Math.max(0, sub(t.total, cashPaid))));
+  const { paid, balance, status } = settleInvoice(t.total, cashPaid, creditApplied);
   const prefix = await getInvoicePrefix(svc);
   const number = await svc.nextInvoiceNumber(prefix);
   const createdAt = nowISO();
@@ -77,9 +108,10 @@ export async function createInvoice(svc: DataService, draft: InvoiceDraft): Prom
     discountValue: draft.discountValue,
     discount: t.discount,
     total: t.total,
-    paid: t.paid,
-    balance: t.balance,
-    status: t.status,
+    paid,
+    balance,
+    status,
+    creditApplied: creditApplied > 0 ? creditApplied : 0,
     note: draft.note || '',
     version: 1,
     createdAt,
@@ -133,9 +165,10 @@ export async function createInvoice(svc: DataService, draft: InvoiceDraft): Prom
     discountValue: draft.discountValue,
     discount: t.discount,
     total: t.total,
-    paid: t.paid,
-    balance: t.balance,
-    status: t.status,
+    paid,
+    balance,
+    status,
+    creditApplied: creditApplied > 0 ? creditApplied : 0,
     note: draft.note,
     version: 1,
     createdAt,
@@ -144,18 +177,47 @@ export async function createInvoice(svc: DataService, draft: InvoiceDraft): Prom
 }
 
 /**
- * Update an existing invoice. Keeps the original number. Writes ONE ledger
- * adjustment entry with the net balance delta so the running balance stays
- * correct, and records any additional payment in the payments collection.
+ * Update an existing invoice. Keeps the original number and behaves as if the
+ * original invoice value was corrected:
+ *
+ *  - The invoice's ledger entry is UPDATED IN PLACE to the new total (no
+ *    separate "Invoice X edited…" adjustment entry), so the customer statement
+ *    shows only the FINAL invoice value and never internal edit rows.
+ *  - Billing-time cash payment records (and their ledger entries) are
+ *    reconciled to the draft: removed rows are deleted, new rows added, with
+ *    each keeping its own Payment Date.
+ *  - Payments previously allocated to this invoice from a customer-level
+ *    "Receive Payment" are preserved, as is the credit applied at creation.
+ *
+ * The running balance shown to users is always recomputed from the ledger, so
+ * the in-place rewrite never leaves a stale balance visible.
  */
 export async function updateInvoice(svc: DataService, invoice: Invoice, draft: InvoiceDraft): Promise<Invoice> {
   const err = validateInvoiceDraft(draft);
   if (err) throw new Error(err);
-  const t = computeInvoiceTotals(draft);
+  const billDate = draft.date || todayISO();
+  const payments = normalizePayments(draft);
+  const cashPaidNew = round2(sum(payments.map((p) => p.amount)));
+  const t = invoiceTotals(draft.items, draft.discountType, draft.discountValue);
   const updatedAt = nowISO();
 
+  // Use the freshest invoice doc: the passed snapshot may be stale (e.g. a
+  // payment was recorded after the page loaded), so the paid/credit
+  // decomposition below must never be built on old values.
+  const current = (await svc.get<Invoice>('invoices', invoice.id)) || invoice;
+
+  // Decompose the invoice's current paid: billing-time cash records + credit
+  // applied at creation + cash allocated from customer-level payments.
+  const oldRecords = await invoicePaymentRecords(svc, invoice.id);
+  const billingCashOld = round2(sum(oldRecords.map((p) => p.amount)));
+  const creditOld = Math.max(0, current.creditApplied || 0);
+  const allocatedCashOld = round2(Math.max(0, sub(current.paid, add(billingCashOld, creditOld))));
+  // Keep the previously applied credit (clamped to what the new total can use).
+  const creditApplied = round2(Math.min(creditOld, Math.max(0, sub(t.total, add(allocatedCashOld, cashPaidNew)))));
+  const { paid, balance, status } = settleInvoice(t.total, add(allocatedCashOld, cashPaidNew), creditOld);
+
   await svc.set('invoices', invoice.id, {
-    date: draft.date,
+    date: billDate,
     customerId: draft.customerId,
     customer: draft.customer,
     items: draft.items,
@@ -164,38 +226,61 @@ export async function updateInvoice(svc: DataService, invoice: Invoice, draft: I
     discountValue: draft.discountValue,
     discount: t.discount,
     total: t.total,
-    paid: t.paid,
-    balance: t.balance,
-    status: t.status,
+    paid,
+    balance,
+    status,
+    creditApplied,
     note: draft.note || '',
     version: (invoice.version || 1) + 1,
     updatedAt
   });
 
-  const oldNet = round2(sub(invoice.total, invoice.paid));
-  const newNet = round2(sub(t.total, t.paid));
-  const delta = round2(sub(newNet, oldNet));
-  if (delta !== 0) {
+  // Rewrite the invoice's ledger entry to the corrected total — never an
+  // "edited" adjustment row.
+  const allLedger = await svc.query<LedgerEntry>('ledger');
+  const invEntry = allLedger.find((e) => e.invoiceId === invoice.id && e.type === 'invoice');
+  if (invEntry) {
+    await svc.set('ledger', invEntry.id, {
+      amount: t.total,
+      description: `Invoice ${invoice.number}`,
+      updatedAt
+    });
+  } else {
+    // Safety net for legacy invoices without a ledger entry.
     await addLedgerEntry(svc, {
       customerId: draft.customerId,
-      type: 'adjustment',
+      type: 'invoice',
       date: updatedAt,
-      description: `Invoice ${invoice.number} edited (balance ${delta > 0 ? 'increased' : 'reduced'} by ${Math.abs(delta).toFixed(2)})`,
+      description: `Invoice ${invoice.number}`,
       invoiceId: invoice.id,
       invoiceNumber: invoice.number,
-      amount: delta
+      amount: t.total
     });
   }
-  if (t.paid > invoice.paid) {
-    const extraPaid = round2(sub(t.paid, invoice.paid));
+
+  // Reconcile billing-time payment records + their ledger entries to the draft.
+  const oldLedgerPayments = allLedger.filter((e) => e.invoiceId === invoice.id && e.type === 'payment');
+  for (const e of oldLedgerPayments) await svc.delete('ledger', e.id);
+  for (const p of oldRecords) await svc.delete('payments', p.id);
+  for (const p of payments) {
+    await addLedgerEntry(svc, {
+      customerId: draft.customerId,
+      type: 'payment',
+      date: updatedAt,
+      paymentDate: p.date,
+      description: `Payment received — Invoice ${invoice.number}${p.method && p.method !== 'Cash' ? ` (${p.method})` : ''}`,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.number,
+      amount: -p.amount
+    });
     await svc.add('payments', {
       customerId: draft.customerId,
       invoiceId: invoice.id,
       invoiceNumber: invoice.number,
-      amount: extraPaid,
-      date: draft.date,
-      method: 'Cash',
-      note: 'Additional payment at invoice edit',
+      amount: p.amount,
+      date: p.date,
+      method: p.method,
+      note: p.note || '',
       createdAt: updatedAt
     });
   }
@@ -209,9 +294,10 @@ export async function updateInvoice(svc: DataService, invoice: Invoice, draft: I
     discountValue: draft.discountValue,
     discountType: draft.discountType,
     total: t.total,
-    paid: t.paid,
-    balance: t.balance,
-    status: t.status,
+    paid,
+    balance,
+    status,
+    creditApplied,
     version: (invoice.version || 1) + 1,
     updatedAt
   };

@@ -108,6 +108,58 @@ export function sortLedgerChronological(entries: LedgerEntry[]): LedgerEntry[] {
   return [...entries].sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1));
 }
 
+/**
+ * Fold invoice-edit adjustment entries into their linked invoice entries so
+ * the customer-facing statement / ledger show ONLY the corrected invoice
+ * value — never separate "Invoice X edited (balance reduced/increased…)" rows.
+ *
+ * The invoice entry's amount becomes total + Σ(adjustments for that invoice),
+ * and the adjustment entries themselves are dropped. This keeps the running
+ * balance EXACTLY equal to the raw ledger sum (legacy adjustment rows still
+ * count) while presenting a clean, human-readable account. Orphaned
+ * adjustments (their invoice no longer exists anywhere in the ledger) are
+ * kept as-is so no money silently disappears.
+ *
+ * New invoices/edits never create adjustment entries at all — this only
+ * normalizes data written by the old edit flow.
+ */
+export function netAdjustments(entries: LedgerEntry[]): LedgerEntry[] {
+  const adjByInvoice = new Map<string, number>();
+  const nettedIds = new Set<string>();
+  const invoiceIds = new Set<string>();
+  for (const e of entries) {
+    if (e.type === 'invoice' && e.invoiceId) invoiceIds.add(e.invoiceId);
+  }
+  for (const e of entries) {
+    if (e.type !== 'adjustment' || !e.invoiceId) continue;
+    if (!invoiceIds.has(e.invoiceId)) continue; // orphan — keep it visible
+    nettedIds.add(e.id);
+    adjByInvoice.set(e.invoiceId, round2(add(adjByInvoice.get(e.invoiceId) ?? 0, Number(e.amount) || 0)));
+  }
+  return entries
+    .filter((e) => !nettedIds.has(e.id))
+    .map((e) => {
+      if (e.type !== 'invoice') return e;
+      const adj = adjByInvoice.get(e.invoiceId || '');
+      if (adj == null || adj === 0) return e;
+      return { ...e, amount: round2(add(Number(e.amount) || 0, adj)) };
+    });
+}
+
+/**
+ * Recompute every entry's running balance in chronological order. In-place
+ * invoice edits (which rewrite an entry's amount without appending a new one)
+ * make stored `balanceAfter` values stale, so the ledger tab and statement
+ * always recompute instead of trusting them.
+ */
+export function withRunningBalance(entries: LedgerEntry[]): LedgerEntry[] {
+  let running = 0;
+  return sortLedgerChronological(entries).map((e) => {
+    running = round2(add(running, Number(e.amount) || 0));
+    return { ...e, balanceAfter: running };
+  });
+}
+
 export function sortLedgerNewest(entries: LedgerEntry[]): LedgerEntry[] {
   return [...entries].sort((a, b) => (a.createdAt > b.createdAt ? -1 : a.createdAt < b.createdAt ? 1 : 0));
 }

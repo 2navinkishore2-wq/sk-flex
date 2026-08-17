@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Pencil, HandCoins, IndianRupee, Wallet, AlertCircle, Plus, Users, FileDown, Image as ImageIcon } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { ledgerStats, sortLedgerChronological } from '../services/ledger';
+import { ledgerStats, netAdjustments, sortLedgerChronological, withRunningBalance } from '../services/ledger';
 import { updateCustomer, type CustomerInput } from '../services/customers';
 import { recordPayment } from '../services/payments';
-import { formatDate, formatDateTime, formatINR, todayISO } from '../lib/format';
+import { formatDate, formatINR, todayISO } from '../lib/format';
 import { buildCustomerStatement, entryBusinessDate, statementFileName } from '../lib/statement';
 import { downloadStatementJpg, downloadStatementPdf } from '../services/export';
 import { StatementDocument } from '../components/StatementDocument';
@@ -26,7 +26,6 @@ export function CustomerDetailPage() {
   const [statementRange, setStatementRange] = useState<{ start: string; end: string } | null>(null);
   const [exporting, setExporting] = useState<'pdf' | 'jpg' | null>(null);
   const [payOpen, setPayOpen] = useState(false);
-  const [payInvoice, setPayInvoice] = useState('');
   const [payAmount, setPayAmount] = useState('');
   const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10));
   const [payMethod, setPayMethod] = useState('Cash');
@@ -36,6 +35,10 @@ export function CustomerDetailPage() {
   const customerLedger = useMemo(() => ledger.filter((e) => e.customerId === id), [ledger, id]);
   const sortedLedger = useMemo(() => sortLedgerChronological(customerLedger), [customerLedger]);
   const stats = useMemo(() => ledgerStats(sortedLedger), [sortedLedger]);
+  // Ledger rows as shown to the customer: invoice-edit adjustments folded into
+  // their invoice rows (never "Invoice edited…" entries) and the running
+  // balance recomputed from the (corrected) amounts.
+  const displayLedger = useMemo(() => withRunningBalance(netAdjustments(sortedLedger)), [sortedLedger]);
   const customerInvoices = useMemo(
     () => invoices.filter((i) => i.customerId === id).sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1)),
     [invoices, id]
@@ -115,12 +118,9 @@ export function CustomerDetailPage() {
   };
 
   const doPayment = async () => {
-    const inv = customerInvoices.find((i) => i.id === payInvoice);
-    if (!inv) return;
     setPayBusy(true);
     try {
-      await recordPayment(service, inv, {
-        invoiceId: inv.id,
+      await recordPayment(service, customer.id, {
         amount: parseFloat(payAmount) || 0,
         date: payDate,
         method: payMethod,
@@ -161,18 +161,20 @@ export function CustomerDetailPage() {
               {customer.email ? ` · ${customer.email}` : ''}
             </div>
           </div>
-          {stats.balance > 0 && (
-            <Button variant="success" onClick={() => setPayOpen(true)}>
-              <HandCoins size={17} /> Receive Payment
-            </Button>
-          )}
+          <Button variant="success" onClick={() => setPayOpen(true)}>
+            <HandCoins size={17} /> Receive Payment
+          </Button>
         </div>
       </Card>
 
       <div className="grid grid-4" style={{ margin: '16px 0' }}>
         <StatCard label="Total Billed" value={formatINR(stats.billed)} icon={<IndianRupee size={17} />} tone="blue" />
         <StatCard label="Total Paid" value={formatINR(stats.paid)} icon={<Wallet size={17} />} tone="green" />
-        <StatCard label="Outstanding" value={formatINR(stats.balance)} icon={<AlertCircle size={17} />} tone="red" />
+        {stats.balance < 0 ? (
+          <StatCard label="Advance Credit" value={formatINR(Math.abs(stats.balance))} icon={<Wallet size={17} />} tone="green" />
+        ) : (
+          <StatCard label="Outstanding" value={formatINR(stats.balance)} icon={<AlertCircle size={17} />} tone="red" />
+        )}
         <StatCard label="Invoices" value={String(stats.invoiceCount)} icon={<Plus size={17} />} tone="navy" />
       </div>
 
@@ -199,9 +201,9 @@ export function CustomerDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedLedger.map((e) => (
+                  {displayLedger.map((e) => (
                     <tr key={e.id}>
-                      <td data-label="Date" style={{ color: 'var(--text-2)', fontSize: 13 }}>{e.paymentDate ? formatDate(e.paymentDate) : formatDateTime(e.date)}</td>
+                      <td data-label="Date" style={{ color: 'var(--text-2)', fontSize: 13 }}>{formatDate(entryBusinessDate(e, invoices))}</td>
                       <td data-label="Description">
                         <div style={{ fontWeight: 600 }}>{e.description}</div>
                         {e.invoiceNumber && <div style={{ color: 'var(--text-3)', fontSize: 12 }}>{e.invoiceNumber}</div>}
@@ -238,7 +240,7 @@ export function CustomerDetailPage() {
                     {customerPays.map((p) => (
                       <tr key={p.id}>
                         <td data-label="Date" style={{ color: 'var(--text-2)', fontSize: 13 }}>{formatDate(p.date)}</td>
-                        <td data-label="Invoice" style={{ fontWeight: 600 }}>{p.invoiceNumber}</td>
+                        <td data-label="Invoice" style={{ fontWeight: 600 }}>{p.invoiceNumber || 'Account / advance'}</td>
                         <td className="num" data-label="Amount" style={{ color: 'var(--green)', fontWeight: 700 }}>{formatINR(p.amount)}</td>
                         <td data-label="Method">{p.method}</td>
                         <td data-label="Note" style={{ color: 'var(--text-2)' }}>{p.note || '—'}</td>
@@ -333,16 +335,13 @@ export function CustomerDetailPage() {
       </Modal>
 
       <Modal open={payOpen} title={`Receive payment from ${customer.name}`} onClose={() => setPayOpen(false)} width={440}>
-        <Field label="Invoice">
-          <select className="select" value={payInvoice} onChange={(e) => setPayInvoice(e.target.value)}>
-            <option value="">Select invoice…</option>
-            {customerInvoices.filter((i) => i.balance > 0).map((i) => (
-              <option key={i.id} value={i.id}>{i.number} — balance {formatINR(i.balance)}</option>
-            ))}
-          </select>
-        </Field>
+        <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 12 }}>
+          Enter the full amount actually received. No invoice needs to be selected — the payment is
+          applied to this customer's outstanding bills (oldest first) and anything above the balance
+          due becomes advance credit for future bills.
+        </div>
         <Field label="Amount (₹)">
-          <input className="input" type="number" inputMode="decimal" placeholder="0" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
+          <input className="input" type="number" inputMode="decimal" placeholder="0" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} autoFocus />
         </Field>
         <div className="input-row">
           <Field label="Payment Date"><input className="input" type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} /></Field>

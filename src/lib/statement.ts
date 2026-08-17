@@ -1,5 +1,6 @@
 import type { Customer, Invoice, InvoiceItem, LedgerEntry, Payment } from './types';
 import { round2, add, sub, sum } from './money';
+import { netAdjustments } from '../services/ledger';
 
 export interface StatementItemLine {
   label: string;
@@ -99,7 +100,11 @@ export function buildCustomerStatement(
   startDate: string,
   endDate: string
 ): StatementData {
-  const entries = ledger.filter((e) => e.customerId === customer.id);
+  // Invoice edits are corrected IN PLACE on the invoice's ledger entry, so the
+  // statement only ever shows the final invoice value. Legacy "edited"
+  // adjustment entries are folded into their invoice row here (never shown as
+  // separate rows) — the running balance stays exactly equal to the raw sum.
+  const entries = netAdjustments(ledger.filter((e) => e.customerId === customer.id));
 
   // Payment method lookup: payments are recorded against an invoice with a
   // date + amount; the ledger payment entry mirrors exactly those values.

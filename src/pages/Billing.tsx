@@ -329,8 +329,8 @@ export function BillingPage() {
     const amt = parseFloat(payForm.amount);
     if (!Number.isFinite(amt) || amt <= 0) return setPayError('Enter a valid payment amount.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(payForm.date)) return setPayError('Enter a valid Payment Date.');
-    const remaining = round2(Math.max(0, totals.total - paidNum));
-    if (amt > remaining + 0.01) return setPayError(`Payment exceeds the balance due (${formatINR(remaining)}).`);
+    // No cap: the full amount received is recorded. Anything above this bill's
+    // total becomes customer credit / advance in the ledger.
     setPayments((prev) => [...prev, { key: emptyItemKey(), amount: payForm.amount, date: payForm.date, method: payForm.method }]);
     setPayForm({ amount: '', date: todayISO(), method: 'Cash' });
     setPayError('');
@@ -648,6 +648,9 @@ export function BillingPage() {
                 </Field>
               </div>
               {payError && <div className="form-error" style={{ marginBottom: 8 }}>{payError}</div>}
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
+                The full amount is recorded — anything above this bill's total becomes the customer's advance credit.
+              </div>
               <Button variant="ghost" size="sm" onClick={addPayment}>
                 <Plus size={15} /> Add Payment
               </Button>

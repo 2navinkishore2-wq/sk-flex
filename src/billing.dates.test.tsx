@@ -131,7 +131,7 @@ describe('Bill Date', () => {
   it('6 — Bill Date and Payment Date stay independent (payment never overwrites it)', async () => {
     const { svc, customer } = await setup();
     const inv = await createInvoice(svc, draft(customer, { date: '2026-08-10' }));
-    await recordPayment(svc, inv, { invoiceId: inv.id, amount: 500, date: '2026-08-15', method: 'Cash', note: '' });
+    await recordPayment(svc, inv.customerId, { amount: 500, date: '2026-08-15', method: 'Cash', note: '' });
     const reloaded = (await reloadInvoices())[0];
     expect(reloaded.date).toBe('2026-08-10'); // still the Bill Date
     const pays = await new LocalDataService().query<Payment>('payments');
@@ -143,7 +143,7 @@ describe('Cash payments with their own dates', () => {
   it('4 — records a cash payment on a date different from the Bill Date', async () => {
     const { svc, customer } = await setup();
     const inv = await createInvoice(svc, draft(customer, { date: '2026-08-10' }));
-    await recordPayment(svc, inv, { invoiceId: inv.id, amount: 500, date: '2026-08-12', method: 'Cash', note: '' });
+    await recordPayment(svc, inv.customerId, { amount: 500, date: '2026-08-12', method: 'Cash', note: '' });
     const pays = await new LocalDataService().query<Payment>('payments');
     expect(pays).toHaveLength(1);
     expect(pays[0].date).toBe('2026-08-12');
@@ -153,9 +153,9 @@ describe('Cash payments with their own dates', () => {
   it('5 — multiple payments on different dates stay ONE invoice with full totals', async () => {
     const { svc, customer } = await setup();
     const inv = await createInvoice(svc, draft(customer, { date: '2026-08-10', items: custom2000 }));
-    await recordPayment(svc, inv, { invoiceId: inv.id, amount: 500, date: '2026-08-10', method: 'Cash', note: '' });
-    await recordPayment(svc, inv, { invoiceId: inv.id, amount: 500, date: '2026-08-12', method: 'Cash', note: '' });
-    await recordPayment(svc, inv, { invoiceId: inv.id, amount: 1000, date: '2026-08-15', method: 'Cash', note: '' });
+    await recordPayment(svc, inv.customerId, { amount: 500, date: '2026-08-10', method: 'Cash', note: '' });
+    await recordPayment(svc, inv.customerId, { amount: 500, date: '2026-08-12', method: 'Cash', note: '' });
+    await recordPayment(svc, inv.customerId, { amount: 1000, date: '2026-08-15', method: 'Cash', note: '' });
 
     const pays = await new LocalDataService().query<Payment>('payments');
     expect(pays.map((p) => p.date).sort()).toEqual(['2026-08-10', '2026-08-12', '2026-08-15']);
@@ -185,7 +185,7 @@ describe('Offline preservation (local backend)', () => {
   it('8 — offline payment creation preserves the Payment Date', async () => {
     const { svc, customer } = await setup();
     const inv = await createInvoice(svc, draft(customer, { date: '2026-08-10' }));
-    await recordPayment(svc, inv, { invoiceId: inv.id, amount: 400, date: '2026-08-14', method: 'Cash', note: '' });
+    await recordPayment(svc, inv.customerId, { amount: 400, date: '2026-08-14', method: 'Cash', note: '' });
     const raw = JSON.parse(localStorage.getItem(STORE_KEY)!);
     const storedPays = Object.values(raw.collections.payments) as Record<string, unknown>[];
     expect(storedPays[0].date).toBe('2026-08-14');

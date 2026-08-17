@@ -66,7 +66,7 @@ export function LedgerPage() {
                     <td className="num" data-label="Total Billed">{formatINR(r.billed)}</td>
                     <td className="num" data-label="Total Paid" style={{ color: 'var(--green)' }}>{formatINR(r.paid)}</td>
                     <td className="num" data-label="Outstanding" style={{ color: r.balance > 0 ? 'var(--red)' : 'var(--green)', fontWeight: 800 }}>
-                      {formatINR(r.balance)}
+                      {r.balance > 0 ? formatINR(r.balance) : r.balance < 0 ? `Credit ${formatINR(Math.abs(r.balance))}` : '₹0'}
                     </td>
                     <td className="num"><ChevronRight size={17} color="var(--text-3)" /></td>
                   </tr>

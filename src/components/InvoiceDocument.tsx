@@ -138,6 +138,9 @@ export function InvoiceDocument({
           )}
           <div className="inv-tot-row grand"><span>Grand Total</span><span>{formatINR(invoice.total)}</span></div>
           <div className="inv-tot-row"><span>Paid</span><span>{formatINR(invoice.paid)}</span></div>
+          {invoice.creditApplied != null && invoice.creditApplied > 0 && (
+            <div className="inv-tot-row"><span>Advance / Credit applied</span><span>{formatINR(invoice.creditApplied)}</span></div>
+          )}
           <div className="inv-tot-row balance"><span>Balance Due</span><span>{formatINR(invoice.balance)}</span></div>
         </div>
       </div>
