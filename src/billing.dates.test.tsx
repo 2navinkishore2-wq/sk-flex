@@ -12,11 +12,12 @@ import { LocalDataService } from './services/localService';
 import { createInvoice, updateInvoice } from './services/invoices';
 import { recordPayment } from './services/payments';
 import { createCustomer } from './services/customers';
+import { getBusinessSettings, saveBusinessSettings } from './services/settings';
 import { InvoiceDocument } from './components/InvoiceDocument';
 import { DEFAULT_SETTINGS } from './lib/constants';
 import { formatDate, todayISO } from './lib/format';
 import { SK_PHOTO_FRAME_PRICES } from './lib/frameRates';
-import type { Customer, FramePrice, Invoice, InvoiceDraft, Payment } from './lib/types';
+import type { Customer, FramePrice, Invoice, InvoiceDraft, InvoiceItem, Payment } from './lib/types';
 
 // html2canvas cannot run in jsdom; the export buttons must still render.
 vi.mock('html2canvas-pro', () => ({ default: async () => ({ toDataURL: () => 'data:image/jpeg;base64,AA==' }) }));
@@ -211,6 +212,52 @@ describe('Invoice document / export', () => {
     expect(screen.getByText('Payment History')).toBeInTheDocument();
     expect(screen.getByText('10 Sep 2026')).toBeInTheDocument();
     expect(screen.getByText('12 Sep 2026')).toBeInTheDocument();
+  });
+
+  const rateItems: InvoiceItem[] = [
+    { key: 'it1', product: 'FLEX', label: 'Flex', width: 10, height: 10, area: 100, unit: 'sq.ft', qty: 1, rate: 7.5, amount: 750 },
+    { key: 'it2', product: 'SUNPACK', label: 'Sunpack', width: 4, height: 3, area: 12, unit: 'sq.ft', qty: 1, rate: 25, amount: 300 }
+  ];
+
+  it('hides the rate column when Show Rate on Invoice is OFF (default)', () => {
+    const invoice = makeInvoice({ items: rateItems, subtotal: 1050, total: 1050, balance: 1050 });
+    render(<InvoiceDocument invoice={invoice} business={DEFAULT_SETTINGS} payments={[]} />);
+    // No Rate column at all — the ₹/sq.ft rates (Flex ₹7.50, Sunpack ₹25) must not appear.
+    expect(screen.queryByText('Rate')).not.toBeInTheDocument();
+    expect(screen.queryByText('₹7.50')).not.toBeInTheDocument();
+    expect(screen.queryByText('₹25')).not.toBeInTheDocument();
+    // The calculated amounts and totals are still shown exactly as before.
+    expect(screen.getByText('₹750')).toBeInTheDocument();
+    expect(screen.getByText('₹300')).toBeInTheDocument();
+    expect(screen.getAllByText('₹1,050').length).toBeGreaterThan(0);
+  });
+
+  it('shows the rate column when Show Rate on Invoice is ON — including for OLD invoices', () => {
+    // Old/legacy invoice (no `date` field) renders dynamically with the current setting.
+    const legacy = makeInvoice({ date: undefined as unknown as string, items: rateItems, subtotal: 1050, total: 1050, balance: 1050 });
+    render(<InvoiceDocument invoice={legacy} business={{ ...DEFAULT_SETTINGS, showRateOnInvoice: true }} payments={[]} />);
+    expect(screen.getByText('Rate')).toBeInTheDocument();
+    expect(screen.getByText('₹7.50')).toBeInTheDocument();
+    expect(screen.getByText('₹25')).toBeInTheDocument();
+    // Amounts and totals unchanged.
+    expect(screen.getByText('₹750')).toBeInTheDocument();
+    expect(screen.getByText('₹300')).toBeInTheDocument();
+    expect(screen.getAllByText('₹1,050').length).toBeGreaterThan(0);
+  });
+});
+
+describe('Show Rate on Invoice setting persistence', () => {
+  it('defaults to OFF for accounts that never saved the field (existing installations)', async () => {
+    const { svc } = await setup();
+    expect((await getBusinessSettings(svc)).showRateOnInvoice).toBe(false);
+  });
+
+  it('persists ON and OFF across save/reload', async () => {
+    const { svc } = await setup();
+    await saveBusinessSettings(svc, { ...DEFAULT_SETTINGS, showRateOnInvoice: true });
+    expect((await getBusinessSettings(svc)).showRateOnInvoice).toBe(true);
+    await saveBusinessSettings(svc, { ...DEFAULT_SETTINGS, showRateOnInvoice: false });
+    expect((await getBusinessSettings(svc)).showRateOnInvoice).toBe(false);
   });
 });
 

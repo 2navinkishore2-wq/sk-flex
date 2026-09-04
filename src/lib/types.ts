@@ -136,6 +136,9 @@ export interface BusinessSettings {
   invoicePrefix: string;
   footer: string;
   paymentNote: string;
+  /** Show the per-item Rate column on the customer invoice (display only —
+   * never affects the stored rate or the amount calculation). Default OFF. */
+  showRateOnInvoice: boolean;
 }
 
 export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error';

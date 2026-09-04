@@ -117,6 +117,15 @@ export function SettingsPage() {
         <Field label="Payment note">
           <input className="input" value={form.paymentNote} onChange={(e) => setForm({ ...form, paymentNote: e.target.value })} placeholder="e.g. Balance payment is expected within 30 days." />
         </Field>
+        <Field label="Show Rate on Invoice">
+          <div className="chips">
+            <button type="button" className={`chip${form.showRateOnInvoice ? '' : ' active'}`} onClick={() => setForm({ ...form, showRateOnInvoice: false })}>OFF</button>
+            <button type="button" className={`chip${form.showRateOnInvoice ? ' active' : ''}`} onClick={() => setForm({ ...form, showRateOnInvoice: true })}>ON</button>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6 }}>
+            When OFF, the per-item rate (e.g. ₹7.50/sq.ft) is hidden on the invoice, PDF and JPG — the amount and total are never affected. Applies to every invoice (old and new) when opened.
+          </div>
+        </Field>
         <Button onClick={() => void save()} disabled={saving}><Save size={16} /> {saving ? 'Saving…' : 'Save Settings'}</Button>
       </Card>
 
@@ -153,7 +162,7 @@ export function SettingsPage() {
           </Button>
         </Row>
         <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--text-3)' }}>
-          {APP_NAME} v1.1.0 · One account works on Web, Windows and Android.
+          {APP_NAME} v1.2.0 · One account works on Web, Windows and Android.
         </div>
         <Row style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <Button variant="danger" onClick={() => setClearOpen(true)} disabled={clearing}>

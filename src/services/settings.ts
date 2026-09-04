@@ -20,7 +20,8 @@ export async function saveBusinessSettings(svc: DataService, s: BusinessSettings
     gst: s.gst,
     invoicePrefix: (s.invoicePrefix || 'SK').trim(),
     footer: s.footer,
-    paymentNote: s.paymentNote
+    paymentNote: s.paymentNote,
+    showRateOnInvoice: !!s.showRateOnInvoice
   });
 }
 

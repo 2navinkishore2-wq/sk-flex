@@ -36,7 +36,8 @@ export const DEFAULT_SETTINGS: BusinessSettings = {
   gst: '',
   invoicePrefix: 'SK',
   footer: 'Thank you for your business!',
-  paymentNote: 'Balance payment is expected within 30 days.'
+  paymentNote: 'Balance payment is expected within 30 days.',
+  showRateOnInvoice: false
 };
 
 export const PAYMENT_METHODS = ['Cash', 'UPI', 'Card', 'Bank Transfer', 'Other'];

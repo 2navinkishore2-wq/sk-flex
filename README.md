@@ -36,7 +36,7 @@ Then open the `sk-flex` folder in VS Code. Create `.env` from `.env.example` (se
 | Customer ledger + payments (**customer-level, no invoice selection, overpay → advance credit**) | `src/services/ledger.ts`, `payments.ts` |
 | **Customer Statement export (PDF/JPG, date range, opening/closing balance)** | `src/lib/statement.ts`, `src/components/StatementDocument.tsx`, `src/pages/CustomerDetail.tsx` |
 | Product rates + **Frame Rate Table** | `src/pages/Rates.tsx`, `src/services/settings.ts` |
-| Invoice settings + backup/export + **Clear Data (All)** | `src/pages/Settings.tsx`, `src/services/backup.ts` |
+| Invoice settings (**Show Rate on Invoice** toggle, default OFF) + backup/export + **Clear Data (All)** | `src/pages/Settings.tsx`, `src/services/backup.ts` |
 | Invoice PDF / JPG / Print (A4) | `src/services/export.ts`, `src/components/InvoiceDocument.tsx` |
 | Cloud sync + offline (Firestore) | `src/services/firestoreService.ts` |
 | Demo/offline local backend | `src/services/localService.ts` |
@@ -332,6 +332,15 @@ Payments are **customer-level** — they never ask you to pick an invoice:
 ### Invoice edits (no "edited" transactions)
 
 Editing an invoice **corrects it in place**. The invoice's ledger entry is rewritten to the corrected value, so the customer statement and ledger show only the final invoice amount — e.g. an invoice corrected from ₹3,075 to ₹2,585.50 simply appears as **Invoice SK-0001 ₹2,585.50**. The statement never shows "Invoice … edited / balance reduced / balance increased" rows, and the PDF/JPG always prints the corrected invoice. Billing-time payments entered on the invoice keep their own Payment Dates; payments already received from the customer stay allocated to the invoice.
+
+### Rate display on the invoice (Settings toggle)
+
+**Settings → Show Rate on Invoice** (default **OFF**) controls whether the per-item **Rate** column appears on the customer invoice — on screen, in the PDF and in the JPG:
+
+- **OFF** (default): items show `Item | Size | Amount`, e.g. `Flex | 10 × 10 ft | ₹750` — the internal per-sq.ft rate (₹7.50 etc.) is never shown.
+- **ON**: items show `Item | Size | Rate | Amount`, e.g. `Flex | 10 × 10 ft | ₹7.50 | ₹750`.
+
+This is **display-only**: the stored rate and every calculation (Flex ₹7.50, Star/Sunpack/Vinyl ₹25, frames, totals) stay exactly as they are. The setting applies **dynamically to every invoice — old ones included** — whenever an invoice is opened, printed, or exported as PDF/JPG; nothing is stored on or deleted from the invoice itself.
 
 ### Customer Statement / Ledger export
 

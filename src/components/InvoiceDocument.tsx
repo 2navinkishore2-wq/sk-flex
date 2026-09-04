@@ -83,7 +83,7 @@ export function InvoiceDocument({
               <th style={{ width: 34 }}>#</th>
               <th>Item</th>
               <th>Size</th>
-              <th className="num">Rate</th>
+              {business.showRateOnInvoice && <th className="num">Rate</th>}
               <th className="num">Amount</th>
             </tr>
           </thead>
@@ -96,7 +96,7 @@ export function InvoiceDocument({
                   {it.note ? <div style={{ color: '#64748b', fontSize: 11.5 }}>{it.note}</div> : null}
                 </td>
                 <td>{sizeLabel(it)}</td>
-                <td className="num">{formatINR(it.rate)}</td>
+                {business.showRateOnInvoice && <td className="num">{formatINR(it.rate)}</td>}
                 <td className="num" style={{ fontWeight: 600 }}>{formatINR(it.amount)}</td>
               </tr>
             ))}
