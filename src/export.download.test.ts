@@ -69,9 +69,27 @@ describe('Android download — file goes to Downloads, never Quick Share', () =>
 });
 
 describe('Export filenames identify the document (never generic)', () => {
-  it('individual invoice export keeps its own number-based filename', () => {
-    expect(invoiceFileName('SK-0042', 'pdf')).toBe('SK-0042-invoice.pdf');
-    expect(invoiceFileName('SK-0042', 'jpg')).toBe('SK-0042-invoice.jpg');
+  it('individual invoice export filename carries Bill Date + customer + invoice number', () => {
+    expect(invoiceFileName('2026-08-27', 'Mani Pasanga', 'SK-0004', 'pdf')).toBe('27-08-2026_Mani_Pasanga_SK-0004.pdf');
+    expect(invoiceFileName('2026-08-27', 'Mani Pasanga', 'SK-0004', 'jpg')).toBe('27-08-2026_Mani_Pasanga_SK-0004.jpg');
+    // PDF and JPG share the same base name — only the extension differs.
+    const basePdf = invoiceFileName('2026-08-27', 'Mani Pasanga', 'SK-0004', 'pdf').replace(/\.pdf$/, '');
+    expect(invoiceFileName('2026-08-27', 'Mani Pasanga', 'SK-0004', 'jpg').replace(/\.jpg$/, '')).toBe(basePdf);
+  });
+
+  it('unsafe customer characters become underscores; never a generic name', () => {
+    const f = invoiceFileName('2026-08-27', 'Flex & Sign "Shop" / Salem', 'SK-0004', 'pdf');
+    expect(f).toMatch(/^27-08-2026_/);
+    expect(f).toContain('SK-0004.pdf');
+    expect(f).not.toContain('&');
+    expect(f).not.toContain('"');
+    expect(f).not.toContain('/');
+    expect(f).not.toBe('download.pdf');
+    expect(f).not.toBe('invoice.pdf');
+  });
+
+  it('missing date falls back to a safe, still-identifying name', () => {
+    expect(invoiceFileName('', 'Mani Pasanga', 'SK-0004', 'pdf')).toBe('Mani_Pasanga_SK-0004.pdf');
   });
 
   it('customer statement export filename carries customer + date range', () => {

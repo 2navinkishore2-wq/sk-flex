@@ -162,7 +162,7 @@ export function SettingsPage() {
           </Button>
         </Row>
         <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--text-3)' }}>
-          {APP_NAME} v1.2.0 · One account works on Web, Windows and Android.
+          {APP_NAME} v1.2.1 · One account works on Web, Windows and Android.
         </div>
         <Row style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <Button variant="danger" onClick={() => setClearOpen(true)} disabled={clearing}>

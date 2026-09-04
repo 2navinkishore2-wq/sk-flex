@@ -77,8 +77,24 @@ export function printInvoice() {
   window.print();
 }
 
-export function invoiceFileName(number: string, ext: 'pdf' | 'jpg'): string {
-  return `${fileNameSafe(number)}-invoice.${ext}`;
+/** ISO date -> `DD-MM-YYYY` for filenames (mirrors the statement export). */
+function filenameDate(isoDate: string): string {
+  const [y, m, d] = (isoDate || '').split('-');
+  return y && m && d ? `${d}-${m}-${y}` : isoDate;
+}
+
+/**
+ * Invoice filename: `27-08-2026_Mani_Pasanga_SK-0004.pdf` — Bill Date,
+ * customer name and invoice number at a glance; safe characters only.
+ * Identical for PDF and JPG (only the extension differs).
+ */
+export function invoiceFileName(date: string, customerName: string, number: string, ext: 'pdf' | 'jpg'): string {
+  const safeCustomer = (customerName || 'Customer')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '') || 'Customer';
+  const parts = [filenameDate(date), safeCustomer, fileNameSafe(number)].filter((p) => p.length > 0);
+  return `${parts.join('_')}.${ext}`;
 }
 
 // ---- entry points: individual invoice vs customer statement --------------

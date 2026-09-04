@@ -67,7 +67,7 @@ export function InvoiceViewPage() {
     if (!node) return;
     setExporting('pdf');
     try {
-      await captureNode(() => downloadInvoicePdf(node, invoiceFileName(invoice.number, 'pdf')));
+      await captureNode(() => downloadInvoicePdf(node, invoiceFileName(invoice.date, invoice.customer.name, invoice.number, 'pdf')));
       toast('PDF downloaded', 'success');
     } catch (e) {
       toast('PDF generation failed: ' + (e as Error).message, 'error');
@@ -81,7 +81,7 @@ export function InvoiceViewPage() {
     if (!node) return;
     setExporting('jpg');
     try {
-      await captureNode(() => downloadInvoiceJpg(node, invoiceFileName(invoice.number, 'jpg')));
+      await captureNode(() => downloadInvoiceJpg(node, invoiceFileName(invoice.date, invoice.customer.name, invoice.number, 'jpg')));
       toast('JPG downloaded', 'success');
     } catch (e) {
       toast('JPG generation failed: ' + (e as Error).message, 'error');

@@ -1,7 +1,7 @@
 {
   "name": "sk-flex-billing",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "SK Flex Billing — cross-platform billing app for a Flex/Sign Board printing shop (Web + Android APK + Windows EXE)",
   "type": "module",
   "main": "electron/main.cjs",

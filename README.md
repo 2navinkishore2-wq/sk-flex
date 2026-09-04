@@ -344,7 +344,7 @@ This is **display-only**: the stored rate and every calculation (Flex ₹7.50, S
 
 ### Customer Statement / Ledger export
 
-On **Customer detail → Statement**, pick a start/end date and download a **PDF** or **JPG** of the customer's full statement: opening balance, every invoice (with its items), every cash receipt/payment (with method and Payment Date), the running balance and the closing/outstanding balance, in chronological order. Payments are never hidden just because they fall between invoices. The exported filename identifies the document, e.g. `27-07-2026_To_08-08-2026_Manipasanga_Flex.pdf` / `.jpg`. This is a separate export from the per-invoice **Download PDF/JPG** on the invoice view — the two never mix.
+On **Customer detail → Statement**, pick a start/end date and download a **PDF** or **JPG** of the customer's full statement: opening balance, every invoice (with its items), every cash receipt/payment (with method and Payment Date), the running balance and the closing/outstanding balance, in chronological order. Payments are never hidden just because they fall between invoices. The exported filename identifies the document, e.g. `27-07-2026_To_08-08-2026_Manipasanga_Flex.pdf` / `.jpg`. This is a separate export from the per-invoice **Download PDF/JPG** on the invoice view — the two never mix. Per-invoice exports are named with the Bill Date, customer and invoice number, e.g. `27-08-2026_Mani_Pasanga_SK-0004.pdf` / `.jpg` (identical base name for PDF and JPG).
 
 ### Backup
 The cloud database is the primary backup. `Settings → Export Backup` downloads a JSON of everything (customers, invoices, payments, ledger, frame rates, settings); `Restore Backup` re-imports it. Invoices and customers also export to CSV.
