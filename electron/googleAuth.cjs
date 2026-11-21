@@ -1,0 +1,226 @@
+/* SK Flex Billing — desktop Google Sign-In.
+ *
+ * Installed desktop applications must not be authenticated inside an embedded
+ * browser window, and they cannot use the web popup flow either (the popup
+ * needs a Firebase "authorized domain" and the app origin, and it breaks in a
+ * packaged Electron shell). The supported flow for an installed app is:
+ *
+ *   1. the app opens the SYSTEM BROWSER at Google's authorize endpoint,
+ *   2. the user picks their existing Google account there,
+ *   3. Google redirects to a loopback URL (http://127.0.0.1:<port>) that this
+ *      app listens on for exactly one callback,
+ *   4. the app verifies `state` (CSRF) and exchanges the authorization code for
+ *      tokens using PKCE (RFC 7636) — no client secret is involved or stored,
+ *   5. the returned Google ID token is handed to the Firebase JS SDK via
+ *      signInWithCredential(), which federates the SAME Firebase user (same
+ *      uid, same users/{uid} data) as the web popup produced before.
+ *
+ * This module only ever containing public values: the OAuth *desktop* client id
+ * is embedded in the app by design. Tokens never touch disk or logs.
+ */
+'use strict';
+
+const { createHash, randomBytes, timingSafeEqual } = require('crypto');
+const http = require('http');
+
+const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
+const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const SCOPES = 'openid email profile';
+const DEFAULT_TIMEOUT_MS = 180000;
+
+function base64url(buf) {
+  return Buffer.from(buf)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+/** PKCE verifier + S256 challenge (RFC 7636). */
+function createPkcePair() {
+  const verifier = base64url(randomBytes(32));
+  const challenge = base64url(createHash('sha256').update(verifier).digest());
+  return { verifier, challenge };
+}
+
+function createState() {
+  return base64url(randomBytes(24));
+}
+
+/** Build the Google authorize URL for the loopback redirect. */
+function buildAuthUrl({ clientId, redirectUri, challenge, state, loginHint }) {
+  const url = new URL(AUTH_ENDPOINT);
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', SCOPES);
+  url.searchParams.set('code_challenge', challenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set('state', state);
+  // Always let the user choose the account (shop owners often have several).
+  url.searchParams.set('prompt', 'select_account');
+  if (loginHint) url.searchParams.set('login_hint', loginHint);
+  return url.toString();
+}
+
+/**
+ * Validate the loopback callback. Throws on a missing/mismatched state (a
+ * hostile or stale callback is never exchanged) or on a provider error.
+ */
+function parseCallback(query, expectedState) {
+  const state = String(query.state || '');
+  const a = Buffer.from(state);
+  const b = Buffer.from(String(expectedState || ''));
+  const stateOk = a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
+  if (!stateOk) throw Object.assign(new Error('Sign-in callback was rejected (state mismatch).'), { code: 'STATE_MISMATCH' });
+  if (query.error) {
+    const err = String(query.error_description || query.error);
+    throw Object.assign(new Error(err), {
+      code: /access_denied/i.test(String(query.error)) ? 'CANCELLED' : 'PROVIDER_ERROR'
+    });
+  }
+  const code = String(query.code || '');
+  if (!code) throw Object.assign(new Error('Sign-in callback carried no authorization code.'), { code: 'NO_CODE' });
+  return { code };
+}
+
+function callbackPage(ok, message) {
+  const color = ok ? '#0b1a33' : '#7f1d1d';
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${ok ? 'SK Flex Billing' : 'Sign-in failed'}</title>
+<style>
+ html,body{margin:0;height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:${color};color:#fff;
+ display:flex;align-items:center;justify-content:center}
+ .box{text-align:center;max-width:440px;padding:32px}
+ .logo{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#1d4ed8,#0b1a33);
+ display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;letter-spacing:.5px;margin:0 auto 20px}
+ h1{font-size:20px;margin:0 0 10px;font-weight:700}
+ p{font-size:14px;line-height:1.5;color:#c7d2fe;margin:0}
+</style></head><body><div class="box"><div class="logo">SK</div>
+<h1>${ok ? 'Signed in' : 'Sign-in failed'}</h1><p>${message}</p></div></body></html>`;
+}
+
+/** Exchange the authorization code for tokens (PKCE — no client secret). */
+async function exchangeCode({ code, clientId, redirectUri, verifier }) {
+  const body = new URLSearchParams({
+    code,
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code',
+    code_verifier: verifier
+  }).toString();
+  const res = await fetch(TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  });
+  const text = await res.text();
+  let json = {};
+  try {
+    json = JSON.parse(text);
+  } catch {
+    /* non-JSON error body */
+  }
+  if (!res.ok) {
+    // Google's error codes only — never echo the response body (may hold tokens).
+    const reason = json && (json.error_description || json.error);
+    throw Object.assign(new Error(reason ? String(reason) : `Token exchange failed (HTTP ${res.status}).`), {
+      code: 'TOKEN_EXCHANGE_FAILED'
+    });
+  }
+  if (!json || !json.id_token) {
+    throw Object.assign(new Error('Google returned no ID token.'), { code: 'NO_ID_TOKEN' });
+  }
+  // Return ONLY the ID token: Firebase exchanges it for a session; the access
+  // and refresh tokens are not needed and are dropped here.
+  return { idToken: String(json.id_token) };
+}
+
+/**
+ * Run the full flow. `openExternal` is Electron's shell.openExternal.
+ * Resolves { idToken } — the caller must never log or persist it.
+ */
+async function signInWithSystemBrowser({ clientId, loginHint, openExternal, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+  if (!clientId) {
+    throw Object.assign(new Error('No Google desktop OAuth client ID is configured.'), { code: 'NOT_CONFIGURED' });
+  }
+  if (typeof openExternal !== 'function') {
+    throw Object.assign(new Error('System browser is unavailable.'), { code: 'NO_BROWSER' });
+  }
+
+  const { verifier, challenge } = createPkcePair();
+  const state = createState();
+
+  // Loopback listener: port 0 lets the OS pick a free port (Google's installed
+  // app flow accepts any port on the 127.0.0.1 loopback interface).
+  const server = http.createServer();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const port = server.address().port;
+  const redirectUri = `http://127.0.0.1:${port}`;
+
+  const result = new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        server.close();
+      } catch {
+        /* already closed */
+      }
+      if (err) reject(err);
+      else resolve(value);
+    };
+
+    const timer = setTimeout(
+      () => finish(Object.assign(new Error('Sign-in timed out. Please try again.'), { code: 'TIMEOUT' })),
+      timeoutMs
+    );
+    if (typeof timer.unref === 'function') timer.unref();
+
+    server.on('request', async (req, res) => {
+      if (req.method !== 'GET') {
+        res.writeHead(405).end();
+        return;
+      }
+      const url = new URL(req.url, redirectUri);
+      if (url.pathname !== '/') {
+        res.writeHead(404).end();
+        return;
+      }
+      const query = Object.fromEntries(url.searchParams.entries());
+      try {
+        const { code } = parseCallback(query, state);
+        // Answer the browser only after the exchange so the user sees a truthful
+        // result, and so a failed exchange is not shown as success.
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(callbackPage(true, 'You can close this window and return to SK Flex Billing.'));
+        const tokens = await exchangeCode({ code, clientId, redirectUri, verifier });
+        finish(null, tokens);
+      } catch (e) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(callbackPage(false, 'Return to SK Flex Billing and try again.'));
+        finish(e);
+      }
+    });
+  });
+
+  const authUrl = buildAuthUrl({ clientId, redirectUri, challenge, state, loginHint });
+  await openExternal(authUrl);
+  return result;
+}
+
+module.exports = {
+  AUTH_ENDPOINT,
+  TOKEN_ENDPOINT,
+  base64url,
+  createPkcePair,
+  createState,
+  buildAuthUrl,
+  parseCallback,
+  exchangeCode,
+  signInWithSystemBrowser
+};

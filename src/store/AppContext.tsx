@@ -3,7 +3,10 @@ import type { AuthUser, BusinessSettings, Customer, FramePrice, Invoice, LedgerE
 import type { DataService, QuerySpec } from '../services/data';
 import { createService, type DataMode, type ServiceBundle } from '../services/index';
 import { LocalDataService } from '../services/localService';
+import { createPreviewService } from '../services/preview';
+import { saveAppearance } from '../services/settings';
 import { DEFAULT_RATES, DEFAULT_SETTINGS } from '../lib/constants';
+import { applyTheme, cacheTheme, isThemeId, loadCachedTheme } from '../lib/themes';
 
 interface AppStore {
   service: DataService;
@@ -22,8 +25,15 @@ interface AppStore {
   frameRates: FramePrice[];
   business: BusinessSettings;
   rates: ProductRates;
+  /** Currently applied appearance preset id. */
+  theme: string;
+  /** Apply + cache a theme instantly and sync it to the account. */
+  setTheme: (id: string) => void;
+  /** True inside the read-only "Preview SK Flex" sample session. */
+  preview: boolean;
   signInGoogle: () => Promise<void>;
   signInDemo: (name: string) => Promise<void>;
+  signInPreview: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -46,7 +56,7 @@ export function useApp(): AppStore {
  */
 const cloudBundle: ServiceBundle = createService();
 
-function useLiveCollection<T extends { id: string }>(svc: DataService, name: string, spec?: QuerySpec): T[] {
+export function useLiveCollection<T extends { id: string }>(svc: DataService, name: string, spec?: QuerySpec): T[] {
   const [items, setItems] = useState<T[]>([]);
   // Serialize the spec so effect deps are stable (inline object literals would
   // re-subscribe on every render and cause an infinite loop).
@@ -77,6 +87,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(service.getSyncStatus());
   const [syncError, setSyncError] = useState<string | null>(service.getLastSyncError());
   const [online, setOnline] = useState(service.isOnline());
+  const [theme, setThemeState] = useState<string>(() => loadCachedTheme());
+  const themeTouched = useRef(false);
   const reconciledRef = useRef(false);
 
   useEffect(() => {
@@ -119,6 +131,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const rates = useMemo<ProductRates>(
     () => ({ ...DEFAULT_RATES, ...(ratesDoc ? (ratesDoc as unknown as ProductRates) : {}) }),
     [ratesDoc]
+  );
+
+  // Appearance: the cached theme paints instantly at startup; the account's
+  // saved theme then takes over on a new device until the user picks one here.
+  const appearanceDoc = settingsDocs.find((d) => d.id === 'appearance') as
+    | ({ id: string } & { theme?: unknown })
+    | undefined;
+  useEffect(() => {
+    if (themeTouched.current || !appearanceDoc) return;
+    const remote = appearanceDoc.theme;
+    if (!isThemeId(remote)) return;
+    applyTheme(remote);
+    cacheTheme(remote);
+    setThemeState(remote);
+  }, [appearanceDoc]);
+
+  const setTheme = useCallback(
+    (id: string) => {
+      if (!isThemeId(id)) return;
+      themeTouched.current = true;
+      applyTheme(id);
+      cacheTheme(id);
+      setThemeState(id);
+      if (service.isCloud) {
+        void saveAppearance(service, { theme: id }).catch(() => undefined);
+      }
+    },
+    [service]
   );
 
   // Reconcile duplicate invoice numbers once per session (online safety net).
@@ -172,7 +212,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuthLoading(false);
   }, [service]);
 
+  const signInPreview = useCallback(async () => {
+    const preview = await createPreviewService();
+    setService(preview);
+    setMode('local');
+    setConfigured(cloudBundle.configured);
+    setUser(preview.getAuthUser());
+    setAuthLoading(false);
+  }, []);
+
   const signOut = useCallback(async () => {
+    themeTouched.current = false;
     await service.signOut();
   }, [service]);
 
@@ -194,11 +244,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       frameRates,
       business,
       rates,
+      theme,
+      setTheme,
+      preview: !!user?.preview,
       signInGoogle,
       signInDemo,
+      signInPreview,
       signOut
     }),
-    [service, mode, configured, user, authLoading, syncStatus, syncError, online, customers, invoices, payments, ledger, frameRates, business, rates, signInGoogle, signInDemo, signOut]
+    [service, mode, configured, user, authLoading, syncStatus, syncError, online, customers, invoices, payments, ledger, frameRates, business, rates, theme, setTheme, signInGoogle, signInDemo, signInPreview, signOut]
   );
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;

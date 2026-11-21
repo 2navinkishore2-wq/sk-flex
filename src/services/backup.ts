@@ -2,7 +2,18 @@ import type { Customer, Invoice } from '../lib/types';
 import { formatDate, formatINR, groupIndian } from '../lib/format';
 import type { DataService } from './data';
 
-export const BACKUP_COLLECTIONS = ['customers', 'invoices', 'payments', 'ledger', 'frameRates', 'settings'] as const;
+export const BACKUP_COLLECTIONS = [
+  'customers',
+  'invoices',
+  'payments',
+  'ledger',
+  'frameRates',
+  'settings',
+  // Inventory: materials, stock history and confirmed supplier bills.
+  'materials',
+  'stockMovements',
+  'supplierBills'
+] as const;
 
 export interface BackupFile {
   app: string;

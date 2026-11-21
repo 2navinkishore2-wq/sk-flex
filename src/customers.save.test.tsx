@@ -37,11 +37,7 @@ vi.mock('html2canvas-pro', () => ({ default: async () => ({ toDataURL: () => 'da
 async function openCustomersPage() {
   const userEv = userEvent.setup();
   render(<App />);
-  await userEv.click(await screen.findByRole('button', { name: /continue without account/i }));
-  const input = await screen.findByPlaceholderText(/your name/i);
-  await userEv.clear(input);
-  await userEv.type(input, 'Shop Owner');
-  await userEv.click(screen.getByRole('button', { name: /enter/i }));
+  await userEv.click(await screen.findByRole('button', { name: /preview sk flex/i }));
   await screen.findByRole('heading', { name: /dashboard/i });
   await userEv.click(screen.getAllByRole('link', { name: /customers/i })[0]);
   await screen.findByRole('heading', { level: 1, name: /customers/i });

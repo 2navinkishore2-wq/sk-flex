@@ -43,7 +43,12 @@ import type { AuthUser, SyncStatus } from '../lib/types';
 import { formatInvoiceNumber, parseInvoiceNumber } from '../lib/billing';
 import { seedFramePricesIfEmpty } from '../lib/frameRates';
 import type { DataService, QuerySpec } from './data';
-import { isNative } from '../lib/platform';
+import { isElectron, isNative } from '../lib/platform';
+import {
+  signInWithDesktopGoogle,
+  isDesktopGoogleConfigured,
+  DesktopGoogleSignInError
+} from '../lib/desktopGoogle';
 import {
   signInWithNativeGoogle,
   signOutNativeGoogle,
@@ -222,6 +227,23 @@ export class FirestoreDataService implements DataService {
     const auth = getAuth(this.app!);
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
+
+    // Windows: authenticate in the SYSTEM browser (PKCE + loopback) and hand the
+    // resulting Google ID token to Firebase. This is the supported installed-app
+    // flow and never opens an embedded login window. The Firebase session (and
+    // its uid) is identical to the web popup's for the same Google account.
+    if (isElectron() && isDesktopGoogleConfigured()) {
+      try {
+        const { idToken } = await signInWithDesktopGoogle();
+        const result = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+        return this.toAuthUser(result.user);
+      } catch (e) {
+        if (e instanceof DesktopGoogleSignInError && e.code === 'CANCELLED') {
+          throw new Error('sign-in-was-cancelled');
+        }
+        throw e;
+      }
+    }
 
     if (isNative()) {
       // TEMP-DIAG: capture the native error so a combined message can be shown
@@ -489,7 +511,17 @@ export class FirestoreDataService implements DataService {
    */
   async clearLocalData(): Promise<void> {
     if (this.db && this.basePath) {
-      for (const name of ['customers', 'invoices', 'payments', 'ledger', 'frameRates', 'settings']) {
+      for (const name of [
+        'customers',
+        'invoices',
+        'payments',
+        'ledger',
+        'frameRates',
+        'settings',
+        'materials',
+        'stockMovements',
+        'supplierBills'
+      ]) {
         await this.deleteAllAccountDocs(name);
       }
       // Invoice-number counter — a fresh account starts numbering again.

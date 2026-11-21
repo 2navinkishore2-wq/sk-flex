@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="boot-active">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
@@ -7,10 +7,102 @@
     <meta name="description" content="SK Flex Billing — simple, fast billing for Flex / Sign Board / Printing shops" />
     <link rel="icon" type="image/png" href="./favicon.png" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="preload" as="image" href="./logo.png" />
     <title>SK Flex Billing</title>
+    <style>
+      /* ---------- Cold-launch intro: paints before React and without network ---------- */
+      :root { --boot-navy: #0b1a33; --boot-navy-2: #0f2a55; --boot-blue: #3b82f6; }
+      html.boot-active, html.boot-active body { background: var(--boot-navy); }
+      #boot-splash {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: clamp(14px, 2.4vh, 22px);
+        background:
+          radial-gradient(120% 80% at 50% 0%, #14376b 0%, var(--boot-navy-2) 38%, var(--boot-navy) 100%);
+        color: #fff; overflow: hidden; padding: 24px;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        animation: bootAutoHide 0.6s ease 5.05s forwards;
+      }
+      #boot-splash::after {
+        /* subtle blue light sweep */
+        content: ''; position: absolute; top: -30%; left: -60%;
+        width: 55%; height: 160%;
+        background: linear-gradient(100deg, transparent 0%, rgba(96, 165, 250, 0.05) 35%, rgba(147, 197, 253, 0.35) 50%, rgba(96, 165, 250, 0.05) 65%, transparent 100%);
+        transform: rotate(8deg);
+        animation: bootSweep 3.6s cubic-bezier(0.22, 0.61, 0.36, 1) 0.35s infinite;
+        pointer-events: none;
+      }
+      .boot-logo-wrap {
+        position: relative; z-index: 2;
+        width: clamp(96px, 15vw, 136px); height: clamp(96px, 15vw, 136px);
+        display: flex; align-items: center; justify-content: center;
+        animation: bootLogoIn 0.85s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      .boot-halo {
+        position: absolute; inset: -18%; border-radius: 50%;
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.35) 0%, transparent 70%);
+        animation: bootHalo 3.2s ease-in-out 0.5s infinite;
+      }
+      #boot-splash img { position: relative; width: 100%; height: 100%; object-fit: contain; border-radius: 22px; }
+      .boot-title {
+        position: relative; z-index: 2;
+        font-size: clamp(22px, 4.6vw, 34px); font-weight: 800; letter-spacing: 0.02em;
+        text-align: center; line-height: 1.1;
+        animation: bootTitleIn 0.8s ease 0.35s both;
+      }
+      .boot-title span { color: #93c5fd; }
+      .boot-rule {
+        position: relative; z-index: 2; width: clamp(64px, 12vw, 96px); height: 3px; border-radius: 3px;
+        background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+        animation: bootRuleIn 0.9s ease 0.6s both;
+      }
+      .boot-tag {
+        position: relative; z-index: 2;
+        font-size: clamp(10.5px, 1.6vw, 12.5px); letter-spacing: 0.28em; text-transform: uppercase;
+        color: #94a3b8; text-align: center;
+        animation: bootTitleIn 0.9s ease 0.75s both;
+      }
+      .boot-dots { position: relative; z-index: 2; display: flex; gap: 7px; margin-top: 6px; }
+      .boot-dots i {
+        width: 6px; height: 6px; border-radius: 50%; background: #3b82f6; opacity: 0.35;
+        animation: bootDot 1.15s ease-in-out infinite;
+      }
+      .boot-dots i:nth-child(2) { animation-delay: 0.18s; }
+      .boot-dots i:nth-child(3) { animation-delay: 0.36s; }
+      #boot-splash.boot-exit { animation: none; opacity: 0; transform: scale(1.012); transition: opacity 0.6s ease, transform 0.6s ease; }
+      @keyframes bootAutoHide { to { opacity: 0; visibility: hidden; } }
+      @keyframes bootLogoIn { from { opacity: 0; transform: scale(0.82); } to { opacity: 1; transform: scale(1); } }
+      @keyframes bootTitleIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes bootRuleIn { from { opacity: 0; transform: scaleX(0.2); } to { opacity: 1; transform: scaleX(1); } }
+      @keyframes bootSweep { 0% { left: -60%; } 55%, 100% { left: 115%; } }
+      @keyframes bootHalo { 0%, 100% { opacity: 0.55; transform: scale(0.96); } 50% { opacity: 1; transform: scale(1.05); } }
+      @keyframes bootDot { 0%, 100% { opacity: 0.25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-splash::after { display: none; }
+        .boot-logo-wrap, .boot-title, .boot-rule, .boot-tag { animation: none; }
+        .boot-dots i { animation: none; opacity: 0.6; }
+      }
+      @media (max-height: 460px) {
+        .boot-tag, .boot-dots { display: none; }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-splash" role="status" aria-label="SK Flex Billing is starting">
+      <div class="boot-logo-wrap">
+        <div class="boot-halo"></div>
+        <img src="./logo.png" alt="SK Flex Billing" width="136" height="136" />
+      </div>
+      <div class="boot-title">SK <span>Flex</span> Billing</div>
+      <div class="boot-rule"></div>
+      <div class="boot-tag">Flex &middot; Frame &middot; Sign Shop</div>
+      <div class="boot-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+    </div>
     <div id="root"></div>
+    <script>
+      // Start the five-second intro clock as early as possible.
+      window.__skfbIntroStart = Date.now();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

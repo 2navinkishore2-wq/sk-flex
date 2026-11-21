@@ -1,4 +1,4 @@
-import type { BusinessSettings, FramePrice, ProductRates } from '../lib/types';
+import type { AppearanceSettings, BusinessSettings, FramePrice, ProductRates } from '../lib/types';
 import { DEFAULT_RATES, DEFAULT_SETTINGS } from '../lib/constants';
 import { nowISO } from '../lib/format';
 import { FRAME_THICKNESS_COLUMNS, normalizeFrameSize, type FrameThicknessKey } from '../lib/billing';
@@ -6,6 +6,7 @@ import type { DataService } from './data';
 
 const BUSINESS_DOC = 'business';
 const RATES_DOC = 'rates';
+const APPEARANCE_DOC = 'appearance';
 
 export async function getBusinessSettings(svc: DataService): Promise<BusinessSettings> {
   const doc = await svc.get<{ id: string } & Partial<BusinessSettings>>('settings', BUSINESS_DOC);
@@ -38,6 +39,20 @@ export async function saveProductRates(svc: DataService, rates: ProductRates): P
     sunpack: Number(rates.sunpack) || DEFAULT_RATES.sunpack
   };
   await svc.set('settings', RATES_DOC, clean as unknown as Record<string, unknown>);
+}
+
+/* ------------------------------------------------------------- appearance */
+
+/** Read the account's saved theme (null when never chosen on any device). */
+export async function getAppearance(svc: DataService): Promise<AppearanceSettings | null> {
+  const doc = await svc.get<{ id: string } & Partial<AppearanceSettings>>('settings', APPEARANCE_DOC);
+  if (!doc || typeof doc.theme !== 'string') return null;
+  return { theme: doc.theme };
+}
+
+/** Persist the selected theme to the signed-in account (syncs across devices). */
+export async function saveAppearance(svc: DataService, settings: AppearanceSettings): Promise<void> {
+  await svc.set('settings', APPEARANCE_DOC, { theme: settings.theme });
 }
 
 // ----------------------------------------------------------------- frame prices

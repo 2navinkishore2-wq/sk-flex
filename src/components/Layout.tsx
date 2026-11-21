@@ -7,11 +7,13 @@ import {
   Users,
   BookOpen,
   SlidersHorizontal,
+  Warehouse,
   Settings,
   Menu as MenuIcon,
   X,
   LogOut,
-  WifiOff
+  WifiOff,
+  Eye
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { SyncPill } from './ui';
@@ -24,6 +26,7 @@ const NAV = [
   { to: '/customers', label: 'Customers', icon: Users, end: true },
   { to: '/ledger', label: 'Ledger', icon: BookOpen, end: true },
   { to: '/rates', label: 'Rates', icon: SlidersHorizontal, end: true },
+  { to: '/inventory', label: 'Inventory', icon: Warehouse, end: true },
   { to: '/settings', label: 'Settings', icon: Settings, end: true }
 ];
 
@@ -49,7 +52,7 @@ function UserAvatar({ photoURL, name, size }: { photoURL?: string | null; name?:
 }
 
 export function Layout({ children }: { children: ReactNode }) {
-  const { user, syncStatus, syncError, demo, online, signOut } = useAppCompat();
+  const { user, syncStatus, syncError, demo, online, signOut, preview } = useAppCompat();
   const [moreOpen, setMoreOpen] = useState(false);
   const navigate = useNavigate();
   const [logo, setLogo] = useState<string>('');
@@ -93,7 +96,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <div className="user-name">{user?.name}</div>
               <div className="user-mail">{demo ? 'Demo mode' : user?.email || ''}</div>
             </div>
-            <button className="icon-btn" style={{ background: 'transparent', borderColor: 'rgba(148,163,184,0.25)', color: '#94a3b8' }} onClick={() => void signOut()} title="Sign out">
+            <button className="icon-btn" style={{ background: 'transparent', borderColor: 'rgba(148,163,184,0.25)', color: 'var(--nav-muted)' }} onClick={() => void signOut()} title="Sign out">
               <LogOut size={16} />
             </button>
           </div>
@@ -117,6 +120,12 @@ export function Layout({ children }: { children: ReactNode }) {
       </div>
 
       <main className="main-area">
+        {preview && (
+          <div className="preview-banner">
+            <Eye size={15} />
+            Preview SK Flex — read-only sample data. Nothing is saved; sign in with Google to use your own account.
+          </div>
+        )}
         {!online && !demo && (
           <div className="offline-banner">
             <WifiOff size={15} />
@@ -189,6 +198,7 @@ function useAppCompat() {
     syncError: app.syncError,
     demo: app.mode === 'local',
     online: app.online,
-    signOut: app.signOut
+    signOut: app.signOut,
+    preview: app.preview
   };
 }

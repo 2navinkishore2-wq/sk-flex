@@ -1,11 +1,5 @@
 /** Detect the current runtime platform from one shared codebase. */
 
-declare global {
-  interface Window {
-    skFlexBilling?: { platform: string; isElectron: boolean };
-  }
-}
-
 export function isElectron(): boolean {
   return typeof window !== 'undefined' && !!window.skFlexBilling?.isElectron;
 }

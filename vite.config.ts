@@ -1,9 +1,17 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
+
 export default defineConfig({
   base: './',
+  define: {
+    // Single source of truth for the installed version shown in Settings → About
+    // and compared against the latest GitHub release.
+    __APP_VERSION__: JSON.stringify(pkg.version)
+  },
   plugins: [
     react(),
     VitePWA({
@@ -24,7 +32,10 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // Include the vendored OCR engine + English trained data so bill
+        // scanning works offline after the first install of the PWA.
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,gz,wasm}'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallback: 'index.html'
       }
     })

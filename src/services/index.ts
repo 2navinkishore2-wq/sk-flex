@@ -18,6 +18,25 @@ function emulatorFromEnv(env: Record<string, string | undefined>): EmulatorConfi
   return { authHost: host, authPort: 9099, firestoreHost: host, firestorePort };
 }
 
+/**
+ * Names of the Firebase environment variables that are missing from this build.
+ * Used by the login screen to explain exactly what has to be configured, and
+ * to avoid ever offering a Google button that cannot work.
+ */
+export function missingFirebaseEnv(env: Record<string, string | undefined> = import.meta.env): string[] {
+  const required = [
+    'VITE_FIREBASE_API_KEY',
+    'VITE_FIREBASE_AUTH_DOMAIN',
+    'VITE_FIREBASE_PROJECT_ID',
+    'VITE_FIREBASE_STORAGE_BUCKET',
+    'VITE_FIREBASE_MESSAGING_SENDER_ID',
+    'VITE_FIREBASE_APP_ID'
+  ] as const;
+  const missing: string[] = required.filter((k) => !(env[k] || '').trim());
+  if (!(env.VITE_GOOGLE_DESKTOP_CLIENT_ID || '').trim()) missing.push('VITE_GOOGLE_DESKTOP_CLIENT_ID');
+  return missing;
+}
+
 export interface ServiceBundle {
   service: DataService;
   mode: DataMode;

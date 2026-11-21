@@ -1,7 +1,7 @@
 {
   "name": "sk-flex-billing",
   "private": true,
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "SK Flex Billing — cross-platform billing app for a Flex/Sign Board printing shop (Web + Android APK + Windows EXE)",
   "type": "module",
   "main": "electron/main.cjs",
@@ -32,13 +32,15 @@
     "@capgo/capacitor-social-login": "^6.0.1",
     "@fontsource/inter": "^5.0.18",
     "decimal.js": "^10.4.3",
+    "electron-updater": "^6.8.11",
     "firebase": "^10.12.0",
     "html2canvas-pro": "^1.5.8",
     "jspdf": "^2.5.1",
     "lucide-react": "^0.441.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2"
+    "react-router-dom": "^6.26.2",
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.0",
@@ -68,6 +70,14 @@
     "directories": {
       "output": "release"
     },
+    "artifactName": "SK-Flex-Billing-v${version}-Setup.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "2navinkishore2-wq",
+        "repo": "sk-flex"
+      }
+    ],
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -80,7 +90,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "artifactName": "SK-Flex-Billing-v${version}-Setup.${ext}"
     }
   }
 }

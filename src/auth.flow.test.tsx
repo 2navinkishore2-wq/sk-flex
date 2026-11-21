@@ -420,7 +420,7 @@ describe('AppContext authLoading (login-flash fix)', () => {
     await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('user:alice'));
   });
 
-  it('cloud-configured build: the login screen shows the real Google Sign-In button AND keeps Demo mode', async () => {
+  it('cloud-configured build: the login screen shows the real Google Sign-In button AND keeps Preview mode', async () => {
     // AppContext is already imported (module cache) with cloud env from the
     // test above — exactly the production Web/EXE situation: Firebase config
     // baked in via env. This test only renders the login screen.
@@ -437,7 +437,7 @@ describe('AppContext authLoading (login-flash fix)', () => {
     // is present — never replaced by Demo-only.
     expect(await screen.findByRole('button', { name: /sign in with google/i })).toBeInTheDocument();
     // Demo mode remains available alongside Google Sign-In.
-    expect(screen.getByRole('button', { name: /continue without account/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /preview sk flex/i })).toBeInTheDocument();
   });
 
   it('Demo option works on a cloud build: swaps to the local backend, Google switches back', async () => {

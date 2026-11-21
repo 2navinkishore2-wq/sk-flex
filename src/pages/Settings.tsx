@@ -7,6 +7,9 @@ import { customersToCSV, exportBackup, importBackup, invoicesToCSV, triggerTextD
 import { clearAllLocalData } from '../lib/clearData';
 import { APP_NAME } from '../lib/constants';
 import { Button, Card, ConfirmDialog, Field, Row, useToast } from '../components/ui';
+import { AppearanceCard } from '../components/AppearanceCard';
+import { AboutCard } from '../components/AboutUpdate';
+import { currentAppVersion } from '../lib/updater';
 
 export function SettingsPage() {
   const app = useApp();
@@ -129,6 +132,8 @@ export function SettingsPage() {
         <Button onClick={() => void save()} disabled={saving}><Save size={16} /> {saving ? 'Saving…' : 'Save Settings'}</Button>
       </Card>
 
+      <AppearanceCard />
+
       <Card title="Backup & Export" right={<Database size={18} color="var(--text-3)" />}>
         <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 14 }}>
           The cloud database is your primary backup (all devices stay in sync). These exports give you an extra local copy.
@@ -154,7 +159,8 @@ export function SettingsPage() {
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontWeight: 700 }}>{app.user?.name}</div>
             <div style={{ color: 'var(--text-2)', fontSize: 13 }}>
-              {app.user?.email || 'Demo account'} · {app.mode === 'cloud' ? 'Cloud sync enabled' : 'Demo mode — data on this device'}
+              {app.user?.email || (app.preview ? 'Read-only preview' : 'Local account')} ·{' '}
+              {app.mode === 'cloud' ? 'Cloud sync enabled' : app.preview ? 'Preview — nothing is saved' : 'Demo mode — data on this device'}
             </div>
           </div>
           <Button variant="ghost" onClick={() => void app.signOut()}>
@@ -162,7 +168,7 @@ export function SettingsPage() {
           </Button>
         </Row>
         <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--text-3)' }}>
-          {APP_NAME} v1.2.1 · One account works on Web, Windows and Android.
+          {APP_NAME} v{currentAppVersion()} · One account works on Web, Windows and Android.
         </div>
         <Row style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <Button variant="danger" onClick={() => setClearOpen(true)} disabled={clearing}>
@@ -173,6 +179,8 @@ export function SettingsPage() {
           </div>
         </Row>
       </Card>
+
+      <AboutCard />
 
       <ConfirmDialog
         open={clearOpen}

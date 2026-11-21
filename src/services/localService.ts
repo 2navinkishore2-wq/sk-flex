@@ -10,6 +10,13 @@ interface StoreShape {
 const STORE_KEY = 'skfb:local:v1';
 const AUTH_KEY = 'skfb:auth:demo';
 
+export interface LocalServiceOptions {
+  /** Keep everything in memory (sample/preview sessions never touch storage). */
+  memoryOnly?: boolean;
+  /** Read-only session: every write is rejected (Preview SK Flex). */
+  readOnly?: boolean;
+}
+
 function loadStore(): StoreShape {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -88,9 +95,14 @@ export class LocalDataService implements DataService {
   private syncListeners = new Set<(s: SyncStatus) => void>();
   private watchers = new Map<string, Set<() => void>>();
   private online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  private opts: LocalServiceOptions;
+  private readOnly = false;
+  private memoryAuth: AuthUser | null = null;
 
-  constructor() {
-    this.store = loadStore();
+  constructor(opts: LocalServiceOptions = {}) {
+    this.opts = opts;
+    this.readOnly = !!opts.readOnly;
+    this.store = opts.memoryOnly ? { collections: {} } : loadStore();
     this.seedFrameRatesSync();
     if (typeof window !== 'undefined') {
       const update = () => {
@@ -137,13 +149,32 @@ export class LocalDataService implements DataService {
   }
 
   private persist() {
-    saveStore(this.store);
+    if (!this.opts.memoryOnly) saveStore(this.store);
     this.watchers.forEach((cbs) => cbs.forEach((cb) => cb()));
+  }
+
+  /** Preview sessions become read-only once their sample data is seeded. */
+  setReadOnly(readOnly: boolean): void {
+    this.readOnly = readOnly;
+  }
+
+  isReadOnly(): boolean {
+    return this.readOnly;
+  }
+
+  private guardWrite(): void {
+    if (this.readOnly) {
+      throw new Error('Preview SK Flex is read-only. Sign in with Google to make changes.');
+    }
   }
 
   // ------------------------------------------------------------------ auth
   async signInWithGoogle(): Promise<AuthUser> {
-    throw new Error('Google sign-in requires the cloud configuration. Use Demo mode instead.');
+    // Reached only when this build was compiled without Firebase configuration
+    // (VITE_FIREBASE_*), i.e. there is no cloud backend to authenticate against.
+    throw new Error(
+      'Google sign-in is not available in this build because the Firebase configuration is missing. Add the VITE_FIREBASE_* values to .env and rebuild.'
+    );
   }
 
   async signInDemo(name: string): Promise<AuthUser> {
@@ -154,19 +185,50 @@ export class LocalDataService implements DataService {
       photoURL: null,
       isDemo: true
     };
-    // Fresh session: reload stored data from localStorage (a previous session
-    // may have written data this in-memory copy knows nothing about, and a
-    // previous user's data must never leak into this session).
-    this.store = loadStore();
-    this.seedFrameRatesSync(); // only seeds when empty, never duplicates
-    localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+    if (this.opts.memoryOnly) {
+      this.memoryAuth = user;
+    } else {
+      // Fresh session: reload stored data from localStorage (a previous session
+      // may have written data this in-memory copy knows nothing about, and a
+      // previous user's data must never leak into this session).
+      this.store = loadStore();
+      this.seedFrameRatesSync(); // only seeds when empty, never duplicates
+      try {
+        localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+      } catch {
+        /* storage unavailable */
+      }
+    }
+    this.authListeners.forEach((cb) => cb(user));
+    return user;
+  }
+
+  /**
+   * "Preview SK Flex": a read-only look at the app with isolated sample data.
+   * No guest account is created and nothing is written to the device or cloud.
+   */
+  async signInPreview(): Promise<AuthUser> {
+    const user: AuthUser = {
+      uid: 'preview-sample',
+      name: 'Preview SK Flex',
+      email: null,
+      photoURL: null,
+      isDemo: true,
+      preview: true
+    };
+    this.memoryAuth = user;
     this.authListeners.forEach((cb) => cb(user));
     return user;
   }
 
   async signOut(): Promise<void> {
     this.store = { collections: {} };
-    localStorage.removeItem(AUTH_KEY);
+    this.memoryAuth = null;
+    try {
+      localStorage.removeItem(AUTH_KEY);
+    } catch {
+      /* storage unavailable */
+    }
     this.authListeners.forEach((cb) => cb(null));
   }
 
@@ -176,6 +238,7 @@ export class LocalDataService implements DataService {
    * database, so nothing is kept.
    */
   async clearLocalData(): Promise<void> {
+    this.guardWrite();
     this.store = { collections: {} };
     try {
       localStorage.removeItem(STORE_KEY);
@@ -186,6 +249,7 @@ export class LocalDataService implements DataService {
   }
 
   getAuthUser(): AuthUser | null {
+    if (this.opts.memoryOnly) return this.memoryAuth;
     // Read fresh from storage so a new session (e.g. after logout or tests)
     // always reflects the stored auth state.
     try {
@@ -209,6 +273,7 @@ export class LocalDataService implements DataService {
   }
 
   async set(name: string, id: string, data: Record<string, unknown>): Promise<void> {
+    this.guardWrite();
     const existing = this.col(name)[id] || {};
     this.col(name)[id] = {
       ...existing,
@@ -220,6 +285,7 @@ export class LocalDataService implements DataService {
   }
 
   async add(name: string, data: Record<string, unknown>): Promise<string> {
+    this.guardWrite();
     const id = genId();
     this.col(name)[id] = { ...data, createdAt: nowIso(), updatedAt: nowIso() };
     this.persist();
@@ -227,6 +293,7 @@ export class LocalDataService implements DataService {
   }
 
   async delete(name: string, id: string): Promise<void> {
+    this.guardWrite();
     delete this.col(name)[id];
     this.persist();
   }

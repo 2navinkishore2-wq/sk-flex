@@ -12,7 +12,9 @@ import { CustomersPage } from './pages/Customers';
 import { CustomerDetailPage } from './pages/CustomerDetail';
 import { LedgerPage } from './pages/Ledger';
 import { RatesPage } from './pages/Rates';
+import { InventoryPage } from './pages/Inventory';
 import { SettingsPage } from './pages/Settings';
+import { useUpdateWatcher } from './lib/useUpdateWatcher';
 
 /**
  * Shows the "Clear Data (All)" success message after the data-layer reload:
@@ -36,6 +38,8 @@ function PostClearToast() {
 
 function Shell() {
   const { user, authLoading, ready } = useApp();
+  // Startup + reconnect update checks (non-blocking, silent on failure).
+  useUpdateWatcher();
 
   if (authLoading) {
     return (
@@ -69,6 +73,7 @@ function Shell() {
         <Route path="/customers/:id" element={<CustomerDetailPage />} />
         <Route path="/ledger" element={<LedgerPage />} />
         <Route path="/rates" element={<RatesPage />} />
+        <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

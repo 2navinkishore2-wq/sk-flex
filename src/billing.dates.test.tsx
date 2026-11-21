@@ -34,7 +34,6 @@ const STORE_KEY = 'skfb:local:v1';
 
 async function setup() {
   const svc = new LocalDataService();
-  await svc.signInDemo('Shop Owner');
   const customer = await createCustomer(svc, { name: 'Mani', phone: '9876543210', address: 'Main Road', email: '' });
   return { svc, customer };
 }
@@ -277,7 +276,6 @@ describe('Frame price table (real SK Photo Frame price list)', () => {
     expect(bySize('8x6').onePointFiveInch).toBeNull();
     expect(bySize('10x15').twoInch).toBeNull();
     // A second sign-in must not duplicate the table.
-    await svc.signInDemo('Shop Owner');
     const again = await svc.query<FramePrice>('frameRates');
     expect(again.length).toBe(SK_PHOTO_FRAME_PRICES.length);
   });
@@ -342,11 +340,7 @@ describe('Billing screen Bill Date input', () => {
   it('defaults to today, is editable to an earlier date, and the saved date survives to the invoice view', async () => {
     const userEv = userEvent.setup();
     render(<App />);
-    await userEv.click(await screen.findByRole('button', { name: /continue without account/i }));
-    const input = await screen.findByPlaceholderText(/your name/i);
-    await userEv.clear(input);
-    await userEv.type(input, 'Shop Owner');
-    await userEv.click(screen.getByRole('button', { name: /enter/i }));
+    await userEv.click(await screen.findByRole('button', { name: /preview sk flex/i }));
     await screen.findByRole('heading', { name: /dashboard/i });
 
     await userEv.click(screen.getAllByRole('link', { name: /billing/i })[0]);

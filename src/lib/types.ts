@@ -8,6 +8,8 @@ export interface AuthUser {
   email: string | null;
   photoURL: string | null;
   isDemo: boolean;
+  /** True for the read-only "Preview SK Flex" sample session (no account). */
+  preview?: boolean;
 }
 
 export interface Customer {
@@ -179,4 +181,95 @@ export interface InvoiceDraft {
 export interface AppContextData {
   service: import('../services/data').DataService;
   uid: string;
+}
+
+/* =========================================================
+   Inventory (materials, roll-wise stock, supplier bills)
+   ========================================================= */
+
+export type MaterialType = 'Flex' | 'Vinyl' | 'Star' | 'Sunpack' | 'Frame' | 'Other';
+
+export const MATERIAL_TYPES: MaterialType[] = ['Flex', 'Vinyl', 'Star', 'Sunpack', 'Frame', 'Other'];
+
+export type MaterialUnit = 'roll' | 'metre' | 'piece' | 'sqft';
+
+export type StockState = 'in-stock' | 'low' | 'out-of-stock' | 'finished';
+
+/** One stocked material (a specific material type + roll size). */
+export interface Material {
+  id: string;
+  name: string;
+  type: MaterialType;
+  /** Roll size in feet (e.g. 10 for a 10-ft roll). */
+  rollSizeFt: number;
+  unit: MaterialUnit;
+  quantity: number;
+  lowStockThreshold: number;
+  supplier: string;
+  /** YYYY-MM-DD (latest purchase). */
+  purchaseDate: string;
+  /** Cost per roll/unit at the latest purchase. */
+  cost: number;
+  finished: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StockMovementType = 'in' | 'restock' | 'finished';
+
+/** Append-only stock history entry. Movements never come from customer bills. */
+export interface StockMovement {
+  id: string;
+  materialId: string;
+  materialName: string;
+  type: StockMovementType;
+  quantity: number;
+  /** YYYY-MM-DD */
+  date: string;
+  supplier: string;
+  billId?: string;
+  note?: string;
+  createdAt: string;
+}
+
+export type RateUnit = 'roll' | 'foot' | 'metre' | 'piece' | 'sqft';
+
+/** One line of a supplier bill draft (editable before confirming). */
+export interface SupplierBillLine {
+  key: string;
+  materialType: MaterialType;
+  description: string;
+  rollSizeFt: number;
+  quantity: number;
+  rate: number;
+  rateUnit: RateUnit;
+  /** Expected line amount from the bill (editable). */
+  amount: number;
+  /** Warning flags, e.g. "Check rate unit". */
+  flags?: string[];
+}
+
+export interface SupplierBill {
+  id: string;
+  supplierName: string;
+  billNumber: string;
+  /** YYYY-MM-DD */
+  billDate: string;
+  lines: SupplierBillLine[];
+  /** Vehicle charge shown separately; never affects stock quantities. */
+  vehicleCharge: number;
+  materialsTotal: number;
+  total: number;
+  status: 'draft' | 'confirmed';
+  /** Stable key derived from supplier + bill number + date (duplicate guard). */
+  dedupeKey: string;
+  flags: string[];
+  note?: string;
+  confirmedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AppearanceSettings {
+  theme: string;
 }

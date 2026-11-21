@@ -14,6 +14,9 @@ public class MainActivity extends BridgeActivity {
         // Saves invoice PDF/JPG files directly to the device Downloads folder
         // instead of opening the share sheet (Quick Share).
         registerPlugin(DownloadPlugin.class);
+        // In-app updates: download the release APK and hand it to the system
+        // package installer (see src/lib/updater.ts).
+        registerPlugin(UpdatePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -19,14 +19,10 @@ Object.defineProperty(window, 'scrollTo', { value: () => undefined, writable: tr
 // html2canvas cannot run in jsdom; the export buttons must still render.
 vi.mock('html2canvas-pro', () => ({ default: async () => ({ toDataURL: () => 'data:image/jpeg;base64,AA==' }) }));
 
-async function signInDemo(user = 'Shop Owner') {
+async function signInPreviewWorkspace() {
   render(<App />);
   const userEv = userEvent.setup();
-  await userEv.click(await screen.findByRole('button', { name: /continue without account/i }));
-  const input = await screen.findByPlaceholderText(/your name/i);
-  await userEv.clear(input);
-  await userEv.type(input, user);
-  await userEv.click(screen.getByRole('button', { name: /enter/i }));
+  await userEv.click(await screen.findByRole('button', { name: /preview sk flex/i }));
   await screen.findByRole('heading', { name: /dashboard/i });
   return userEv;
 }
@@ -42,7 +38,7 @@ afterEach(() => {
 
 describe('complete billing workflow', () => {
   it('creates a customer and a 10x10 Flex invoice worth ₹750, saves it, and updates the ledger', async () => {
-    const userEv = await signInDemo();
+    const userEv = await signInPreviewWorkspace();
 
     // --- go to Billing ---
     await userEv.click(screen.getAllByRole('link', { name: /billing/i })[0]);
@@ -120,7 +116,7 @@ describe('complete billing workflow', () => {
   });
 
   it('assigns sequential invoice numbers SK-0001, SK-0002 without duplicates', async () => {
-    const userEv = await signInDemo();
+    const userEv = await signInPreviewWorkspace();
     await userEv.click(screen.getAllByRole('link', { name: /billing/i })[0]);
     await screen.findByRole('heading', { name: /new bill/i });
 
@@ -147,10 +143,15 @@ describe('complete billing workflow', () => {
     await makeBill('Balaji', 'SK-0002');
   });
 
-  it('shows setup guidance when cloud mode is requested without config (strict mode)', async () => {
-    // Simulated in code: with VITE_DATA_MODE=cloud and no config, mode === 'none'.
-    // We assert the login page renders (demo fallback available).
+  it('a build without Firebase config never offers a dead Google button (setup guidance instead)', async () => {
+    // Regression: this build has no cloud config, so Google sign-in cannot work.
+    // The login screen must explain what is missing and offer Preview — it must
+    // NOT show a "Sign in with Google" button that can only fail.
     render(<App />);
-    expect(await screen.findByRole('button', { name: /sign in with google/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /preview sk flex/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /sign in with google/i })).toBeNull();
+    expect(screen.getByText(/google sign-in is not configured in this build/i)).toBeInTheDocument();
+    // The outdated instruction is gone from the UI.
+    expect(screen.queryByText(/use demo mode instead/i)).toBeNull();
   });
 });

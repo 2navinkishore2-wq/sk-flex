@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Smartphone, Monitor, Globe } from 'lucide-react';
+import { ShieldCheck, Smartphone, Monitor, Globe, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { APP_NAME, APP_TAGLINE } from '../lib/constants';
 import { getLogoDataUrl } from '../lib/logo';
+import { missingFirebaseEnv } from '../services/index';
+import { runtimePlatform } from '../lib/platform';
 import { Button } from '../components/ui';
 
 export function LoginPage() {
   const app = useApp();
   const navigate = useNavigate();
-  const [busy, setBusy] = useState<'google' | 'demo' | null>(null);
-  const [demoName, setDemoName] = useState('');
-  const [showDemoForm, setShowDemoForm] = useState(false);
+  const [busy, setBusy] = useState<'google' | 'preview' | null>(null);
   const [error, setError] = useState('');
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [logo, setLogo] = useState('');
 
   useEffect(() => {
@@ -23,35 +24,37 @@ export function LoginPage() {
     if (app.user) navigate('/', { replace: true });
   }, [app.user, navigate]);
 
-  const doGoogle = async () => {
+  // A build compiled without Firebase config has no cloud backend at all, so a
+  // Google button could only ever fail. Never offer it in that state.
+  const googleAvailable = app.configured;
+  const missing = googleAvailable ? [] : missingFirebaseEnv();
+
+  const runGoogle = async () => {
     setBusy('google');
     setError('');
     try {
       await app.signInGoogle();
       // onAuthChange will flip the user state and redirect
     } catch (e) {
-      // TEMP-DIAG: surface the exact underlying error until the root cause is
-      // identified (then revert to the friendly message).
-      const msg = (e as Error).message;
-      setError(msg.includes('cancelled') ? 'Sign-in was cancelled.' : `Google sign-in failed: ${msg}`);
+      const msg = (e as Error).message || 'Google sign-in failed.';
+      setError(/cancelled/i.test(msg) ? 'Sign-in was cancelled.' : msg);
     } finally {
       setBusy(null);
     }
   };
 
-  const doDemo = async () => {
-    setBusy('demo');
+  /** Read-only sample workspace — no guest account and no stored data. */
+  const doPreview = async () => {
+    setBusy('preview');
     setError('');
     try {
-      await app.signInDemo(demoName || 'Shop Owner');
+      await app.signInPreview();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(null);
     }
   };
-
-  const showSetup = app.mode === 'none';
 
   return (
     <div className="auth-page">
@@ -60,67 +63,95 @@ export function LoginPage() {
         <div className="auth-title">{APP_NAME}</div>
         <div className="auth-sub">{APP_TAGLINE}</div>
 
-        {showSetup ? (
+        {googleAvailable ? (
           <div>
-            <div className="setup-steps">
-              <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Cloud configuration required</div>
-              <div style={{ marginBottom: 8 }}>
-                This build has <code>VITE_DATA_MODE=cloud</code> but the Firebase values in <code>.env</code> are missing. To enable Google sign-in and cloud sync:
-              </div>
-              <ol style={{ margin: '0 0 0 18px', padding: 0 }}>
-                <li>Create a free Firebase project (console.firebase.google.com)</li>
-                <li>Add a <b>Web app</b> and copy its config</li>
-                <li>Enable <b>Google</b> under Authentication → Sign-in method</li>
-                <li>Put the values in <code>.env</code> (see <code>.env.example</code>)</li>
-                <li>Deploy the rules in <code>firebase/firestore.rules</code></li>
-              </ol>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button variant="ghost" block onClick={() => setShowDemoForm(true)} disabled={busy !== null}>
-                Continue in Demo Mode
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <button className="google-btn" onClick={() => void doGoogle()} disabled={busy !== null}>
+            <button className="google-btn" onClick={() => void runGoogle()} disabled={busy !== null}>
               <GoogleIcon />
               {busy === 'google' ? 'Signing in…' : 'Sign in with Google'}
             </button>
             <div className="divider">or</div>
-            {!showDemoForm ? (
-              <Button variant="ghost" block onClick={() => setShowDemoForm(true)} disabled={busy !== null}>
-                Continue without account (Demo)
-              </Button>
-            ) : (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  className="input"
-                  placeholder="Your name (optional)"
-                  value={demoName}
-                  onChange={(e) => setDemoName(e.target.value)}
-                  maxLength={40}
-                  onKeyDown={(e) => e.key === 'Enter' && void doDemo()}
-                />
-                <Button onClick={() => void doDemo()} disabled={busy !== null}>
-                  {busy === 'demo' ? 'Entering…' : 'Enter'}
-                </Button>
-              </div>
-            )}
+            <Button variant="ghost" block onClick={() => void doPreview()} disabled={busy !== null}>
+              {busy === 'preview' ? 'Opening preview…' : 'Preview SK Flex'}
+            </Button>
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 8 }}>
+              Read-only sample bills, customers and stock. Nothing is saved and no account is created.
+            </div>
             <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 14, display: 'flex', gap: 8, justifyContent: 'center' }}>
               <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><Globe size={13} /> Web</span>
               <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><Monitor size={13} /> Windows</span>
               <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><Smartphone size={13} /> Android</span>
             </div>
           </div>
+        ) : (
+          <div>
+            <div className="setup-steps">
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
+                <AlertTriangle size={15} /> Google sign-in is not configured in this build
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                This build has no Firebase configuration, so there is no cloud account to sign in to. Add these values to
+                <code> .env</code> (see <code>.env.example</code>) and rebuild:
+              </div>
+              <ul style={{ margin: '0 0 10px 18px', padding: 0 }}>
+                {missing.map((key) => (
+                  <li key={key} style={{ marginBottom: 2 }}>
+                    <code>{key}</code>
+                  </li>
+                ))}
+              </ul>
+              <ol style={{ margin: '0 0 0 18px', padding: 0 }}>
+                <li>Open your existing Firebase project (Project settings → Your apps → Web app).</li>
+                <li>Copy the six config values into <code>.env</code>.</li>
+                <li>Authentication → Sign-in method: enable <b>Google</b>.</li>
+                <li>Add the Windows OAuth <b>Desktop</b> client ID as <code>VITE_GOOGLE_DESKTOP_CLIENT_ID</code>.</li>
+                <li>Rebuild the app (<code>npm run build</code> / <code>npm run electron:build</code>).</li>
+              </ol>
+            </div>
+            <Button variant="ghost" block onClick={() => void doPreview()} disabled={busy !== null}>
+              {busy === 'preview' ? 'Opening preview…' : 'Preview SK Flex'}
+            </Button>
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 8 }}>
+              Preview is read-only and works fully offline.
+            </div>
+          </div>
         )}
 
-        {error && <div className="form-error">{error}</div>}
+        {error && (
+          <div className="form-error" role="alert">
+            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+              <AlertTriangle size={14} style={{ flex: '0 0 auto', marginTop: 2 }} />
+              <span>{error}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Button variant="ghost" onClick={() => void runGoogle()} disabled={busy !== null}>
+                <RefreshCw size={13} style={{ marginRight: 4, verticalAlign: -2 }} /> Retry
+              </Button>
+              <button
+                type="button"
+                onClick={() => setShowDiagnostics((v) => !v)}
+                style={{ background: 'none', border: 0, padding: 0, fontSize: 11.5, color: 'var(--text-3)', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                {showDiagnostics ? 'Hide diagnostics' : 'Diagnostics'}
+              </button>
+            </div>
+            {showDiagnostics && (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-3)', fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap' }}>
+                {[
+                  `platform: ${runtimePlatform()}`,
+                  `data mode: ${app.mode}`,
+                  `cloud configured: ${app.configured ? 'yes' : 'no'}`,
+                  `online: ${app.online ? 'yes' : 'no'}`,
+                  missing.length ? `missing: ${missing.join(', ')}` : 'missing: —'
+                ].join('\n')}
+              </div>
+            )}
+          </div>
+        )}
 
-        {app.mode === 'local' && app.configured === false && (
+        {googleAvailable && app.mode === 'local' && (
           <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <ShieldCheck size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
-            Demo mode: everything stays on this device. Add Firebase config to enable Google sign-in and multi-device sync.
+            You are in the offline preview workspace. Sign in with Google to use your cloud account.
           </div>
         )}
       </div>
