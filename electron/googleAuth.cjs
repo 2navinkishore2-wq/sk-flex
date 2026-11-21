@@ -219,17 +219,29 @@ async function signInWithSystemBrowser({
         return;
       }
       const query = Object.fromEntries(url.searchParams.entries());
+      const reply = (ok, message) => {
+        // Exactly one response per callback — writing twice throws in Node and
+        // would crash the Electron main process after a failed token exchange.
+        if (res.headersSent || res.writableEnded) return;
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(callbackPage(ok, message));
+      };
       try {
         const { code } = parseCallback(query, state);
-        // Answer the browser only after the exchange so the user sees a truthful
-        // result, and so a failed exchange is not shown as success.
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(callbackPage(true, 'You can close this window and return to SK Flex Billing.'));
-        const tokens = await exchangeCode({ code, clientId, redirectUri, verifier });
+        // Exchange FIRST, then answer the browser, so the user only sees
+        // "Signed in" when a usable token was actually obtained.
+        let tokens;
+        try {
+          tokens = await exchangeCode({ code, clientId, redirectUri, verifier });
+        } catch (e) {
+          reply(false, 'Google could not complete the sign-in. Return to SK Flex Billing and try again.');
+          finish(e);
+          return;
+        }
+        reply(true, 'You can close this window and return to SK Flex Billing.');
         finish(null, tokens);
       } catch (e) {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(callbackPage(false, 'Return to SK Flex Billing and try again.'));
+        reply(false, 'Return to SK Flex Billing and try again.');
         finish(e);
       }
     });
