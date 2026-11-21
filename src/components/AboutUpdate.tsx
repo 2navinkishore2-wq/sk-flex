@@ -161,11 +161,9 @@ export function AboutCard() {
                     ? 'Open installer'
                     : 'Download update'}
               </Button>
-              {platform === 'electron' && !status.manualInstall && (
-                <Button variant="dark" onClick={() => void install()} disabled={busy}>
-                  Restart &amp; Update
-                </Button>
-              )}
+              {/* "Restart & Update" only exists once the installer is downloaded
+                  (state 'ready') — offering it earlier quits the app with
+                  "No update filepath provided". */}
               <Button variant="ghost" onClick={() => window.open(status.releaseUrl || GITHUB_RELEASES_URL, '_blank')}>
                 <ExternalLink size={15} /> Release notes
               </Button>

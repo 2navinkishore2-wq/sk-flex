@@ -23,7 +23,7 @@ interface SkFlexDesktopUpdateApi {
 
 interface SkFlexDesktopAuthApi {
   /** Opens the SYSTEM browser; resolves with a Google ID token or an error code. */
-  googleSignIn: (opts: { clientId: string; loginHint?: string }) => Promise<{
+  googleSignIn: (opts: { clientId: string; loginHint?: string; desktopClient?: boolean }) => Promise<{
     ok: boolean;
     idToken?: string;
     code?: string;

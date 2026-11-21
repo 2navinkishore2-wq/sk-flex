@@ -20,10 +20,24 @@ import { isElectron } from './platform';
  * exact address is listed under the client's Authorized redirect URIs.
  */
 export function desktopClientId(): string {
-  return (
-    (import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_ID || '').trim() ||
-    (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '').trim()
-  );
+  return desktopOAuthClient().clientId;
+}
+
+/**
+ * Which OAuth client the loopback flow will use, and whether it is an installed
+ * app ("Desktop") client.
+ *
+ * A Desktop client accepts the loopback redirect on any port, so the app asks
+ * the OS for a free one (the RFC 8252 recommendation). The web-client fallback
+ * only works on the fixed, pre-registered address.
+ */
+export function desktopOAuthClient(): { clientId: string; isInstalledAppClient: boolean } {
+  const desktop = (import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_ID || '').trim();
+  if (desktop) return { clientId: desktop, isInstalledAppClient: true };
+  return {
+    clientId: (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '').trim(),
+    isInstalledAppClient: false
+  };
 }
 
 export function isDesktopGoogleConfigured(): boolean {
@@ -48,7 +62,8 @@ export async function signInWithDesktopGoogle(): Promise<{ idToken: string }> {
       'NOT_CONFIGURED'
     );
   }
-  const res = await api.googleSignIn({ clientId: desktopClientId() });
+  const { clientId, isInstalledAppClient } = desktopOAuthClient();
+  const res = await api.googleSignIn({ clientId, desktopClient: isInstalledAppClient });
   if (!res || !res.ok || !res.idToken) {
     const code = res?.code || 'FAILED';
     const message = res?.error || 'Google sign-in failed.';

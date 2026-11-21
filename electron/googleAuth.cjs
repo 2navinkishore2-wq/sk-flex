@@ -208,7 +208,12 @@ async function signInWithSystemBrowser({
   openExternal,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   redirectPort = DEFAULT_REDIRECT_PORT,
-  redirectPath = REDIRECT_PATH
+  redirectPath = REDIRECT_PATH,
+  // Installed-app ("Desktop") OAuth clients accept the loopback redirect on ANY
+  // port, so RFC 8252 recommends asking the OS for a free one (0) instead of
+  // reserving a fixed port that another program may already hold. A WEB client
+  // only accepts the exact registered address, so it must keep the fixed port.
+  ephemeralPort = false
 }) {
   if (!clientId) {
     throw Object.assign(new Error('No Google desktop OAuth client ID is configured.'), { code: 'NOT_CONFIGURED' });
@@ -220,18 +225,8 @@ async function signInWithSystemBrowser({
   const { verifier, challenge } = createPkcePair();
   const state = createState();
 
-  const redirectUri = `http://127.0.0.1:${redirectPort}${redirectPath}`;
-
-  // Refuse before opening the browser when Google would reject the redirect:
-  // a policy error page never calls back, so waiting would only time out.
-  const probe = await probeRedirectUri({ clientId, redirectUri });
-  if (!probe.ok) {
-    throw Object.assign(new Error(probe.message), { code: probe.code, redirectUri });
-  }
-
-  // Loopback listener on the FIXED redirect URL. A "Desktop app" OAuth client
-  // accepts any loopback port; a web client accepts this exact address once it
-  // is listed under Authorized Redirect URIs.
+  // Loopback listener. RFC 8252: bind 127.0.0.1 (never 0.0.0.0) and prefer an
+  // OS-assigned port so a busy port can never block sign-in.
   const server = http.createServer();
   await new Promise((resolve, reject) => {
     server.once('error', (e) => {
@@ -248,8 +243,26 @@ async function signInWithSystemBrowser({
         reject(e);
       }
     });
-    server.listen(redirectPort, '127.0.0.1', resolve);
+    server.listen(ephemeralPort ? 0 : redirectPort, '127.0.0.1', resolve);
   });
+  const boundPort = server.address().port;
+  const redirectUri = `http://127.0.0.1:${boundPort}${redirectPath}`;
+
+  // Refuse to open the browser when Google would reject this redirect: a policy
+  // error page never calls back, so waiting would only end in a timeout.
+  const probe = await probeRedirectUri({ clientId, redirectUri });
+  if (!probe.ok) {
+    try {
+      server.close();
+    } catch {
+      /* already closed */
+    }
+    const err = Object.assign(new Error(probe.message), { code: probe.code, redirectUri });
+    if (probe.code === 'REDIRECT_URI_NOT_REGISTERED') {
+      err.message = `${probe.message} Register that exact address in the OAuth client's Authorized redirect URIs, or use a Desktop-app client ID.`;
+    }
+    throw err;
+  }
 
   const result = new Promise((resolve, reject) => {
     let settled = false;

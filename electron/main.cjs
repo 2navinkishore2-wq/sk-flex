@@ -150,6 +150,9 @@ function friendlyUpdateError(raw) {
   };
 }
 
+/** True once the installer for the available update is fully downloaded. */
+let downloadedUpdate = false;
+
 function setupUpdater() {
   ipcMain.handle('skflex:update-check', async () => {
     if (!app.isPackaged) {
@@ -190,6 +193,11 @@ function setupUpdater() {
 
   ipcMain.handle('skflex:update-install', async () => {
     if (!app.isPackaged) return { ok: false, error: 'Updates are only installed in the installed app.' };
+    // Never quit for an update that was not downloaded yet: electron-updater
+    // would close the app and fail with "No update filepath provided".
+    if (!downloadedUpdate) {
+      return { ok: false, error: 'The update has not been downloaded yet. Choose Download update first.' };
+    }
     try {
       if (win) win.webContents.send('skflex:update-progress', { percent: 100, state: 'installing' });
       // Give the IPC reply a chance to reach the renderer before quitting.
@@ -213,7 +221,11 @@ function setupUpdater() {
     if (win) win.webContents.send('skflex:update-progress', { percent: p.percent || 0, state: 'downloading' });
   });
   autoUpdater.on('update-downloaded', () => {
+    downloadedUpdate = true;
     if (win) win.webContents.send('skflex:update-progress', { percent: 100, state: 'ready' });
+  });
+  autoUpdater.on('update-available', () => {
+    downloadedUpdate = false;
   });
   autoUpdater.on('error', (e) => {
     console.error('[updater]', e && e.message ? e.message : e);
@@ -240,6 +252,9 @@ function setupGoogleAuth() {
       const { idToken } = await googleAuth.signInWithSystemBrowser({
         clientId,
         loginHint: opts && opts.loginHint,
+        // A Desktop-app client accepts any loopback port; the web-client
+        // fallback needs its exact registered address on the fixed port.
+        ephemeralPort: !!(opts && opts.desktopClient),
         openExternal: (url) => shell.openExternal(url)
       });
       // Requirement: the app regains focus once the browser completes.
