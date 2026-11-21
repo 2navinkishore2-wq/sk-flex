@@ -5,6 +5,7 @@ import { createService, type DataMode, type ServiceBundle } from '../services/in
 import { LocalDataService } from '../services/localService';
 import { createPreviewService } from '../services/preview';
 import { saveAppearance } from '../services/settings';
+import { reconcileInvoiceSettlement } from '../services/payments';
 import { DEFAULT_RATES, DEFAULT_SETTINGS } from '../lib/constants';
 import { applyTheme, cacheTheme, isThemeId, loadCachedTheme } from '../lib/themes';
 
@@ -178,6 +179,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 4000);
     return () => clearTimeout(timeout);
   }, [user, invoices.length, service, business.invoicePrefix]);
+
+  // Settlement reconciliation: recompute invoice paid/balance from the money
+  // records once per online session. This is what repairs a lost update when
+  // two devices recorded a payment at the same moment (their allocation rows
+  // are additive, only the denormalized total can be stale) — including after
+  // an offline period, when the queued payment finally reaches Firestore.
+  const settlementDone = useRef(false);
+  // Read the freshest collections when the timer fires without re-running (and
+  // cancelling) the effect on every list change.
+  const moneyRef = useRef({ invoices, payments });
+  moneyRef.current = { invoices, payments };
+  const hasInvoices = invoices.length > 0;
+  useEffect(() => {
+    if (!online) settlementDone.current = false;
+  }, [online]);
+  useEffect(() => {
+    if (!user || service.kind !== 'firestore' || !online || !hasInvoices) return;
+    if (settlementDone.current) return;
+    settlementDone.current = true;
+    const timeout = setTimeout(() => {
+      const { invoices: inv, payments: pay } = moneyRef.current;
+      void reconcileInvoiceSettlement(service, { invoices: inv, payments: pay }).catch(() => undefined);
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, [user, service, online, hasInvoices]);
 
   const signInGoogle = useCallback(async () => {
     if (service.kind === 'firestore') {

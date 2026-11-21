@@ -18,15 +18,18 @@ export interface LedgerInput {
  * Append a ledger entry. balanceAfter = previous running balance + amount.
  * Computed from the sum of all existing entries so it stays correct even
  * if entries are added sequentially (invoice entry then payment entry).
+ *
+ * Pass `id` for an idempotent entry: a retried write (same payment, same id)
+ * overwrites the same document instead of appending a second money row.
  */
-export async function addLedgerEntry(svc: DataService, input: LedgerInput): Promise<LedgerEntry> {
+export async function addLedgerEntry(svc: DataService, input: LedgerInput, id?: string): Promise<LedgerEntry> {
   // Query the whole (user-scoped) ledger with no where clause: the query
   // target then matches the app's cached ledger watch and works offline.
   const all = await svc.query<LedgerEntry>('ledger');
   const existing = all.filter((e) => e.customerId === input.customerId);
   const running = round2(sum(existing.map((e) => e.amount)));
   const balanceAfter = round2(add(running, input.amount));
-  const id = await svc.add('ledger', {
+  const entry = {
     customerId: input.customerId,
     type: input.type,
     date: input.date,
@@ -36,9 +39,17 @@ export async function addLedgerEntry(svc: DataService, input: LedgerInput): Prom
     invoiceNumber: input.invoiceNumber || '',
     amount: input.amount,
     balanceAfter
-  });
+  };
+  let entryId: string;
+  if (id === undefined) {
+    entryId = await svc.add('ledger', entry);
+  } else {
+    // Deterministic id: a retry lands on the same document (idempotent).
+    entryId = id;
+    await svc.set('ledger', entryId, entry);
+  }
   return {
-    id,
+    id: entryId,
     customerId: input.customerId,
     type: input.type,
     date: input.date,

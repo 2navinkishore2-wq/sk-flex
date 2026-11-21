@@ -106,6 +106,27 @@ export interface Payment {
 }
 
 /**
+ * One allocation of a customer-level payment to a specific invoice.
+ *
+ * Allocations are APPEND-ONLY and each has a deterministic id derived from the
+ * payment and the invoice (`<paymentId>__<invoiceId>`), so applying the same
+ * payment twice (a retry, or two devices syncing the same queued write) can
+ * never allocate the money twice. Invoice `paid`/`balance` are derived from
+ * these rows plus the invoice's own billing-time payments, which means two
+ * devices recording payments at the same time can never lose one another's
+ * allocation — the rows simply add up, and a reconciliation pass recomputes
+ * the stored totals from them.
+ */
+export interface PaymentAllocation {
+  id: string;
+  customerId: string;
+  paymentId: string;
+  invoiceId: string;
+  amount: number;
+  createdAt: string; // ISO
+}
+
+/**
  * One row of the SK Photo Frame price table. `size` is the photo size in
  * inches (e.g. "12x18"); each thickness column is the FIXED price per frame
  * for that width option. `null` means that thickness is NOT offered for the

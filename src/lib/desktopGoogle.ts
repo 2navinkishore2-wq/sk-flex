@@ -11,9 +11,19 @@
 
 import { isElectron } from './platform';
 
-/** Public OAuth *desktop* client id (installed-app client type). */
+/**
+ * Public OAuth client id used by the loopback flow.
+ *
+ * Preferred: a "Desktop app" client (installed-app type) — Google then accepts
+ * any loopback port. Fallback: the existing public WEB client, which works with
+ * the app's fixed redirect URI `http://127.0.0.1:38992/oauth2callback` once that
+ * exact address is listed under the client's Authorized redirect URIs.
+ */
 export function desktopClientId(): string {
-  return (import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_ID || '').trim();
+  return (
+    (import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_ID || '').trim() ||
+    (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '').trim()
+  );
 }
 
 export function isDesktopGoogleConfigured(): boolean {

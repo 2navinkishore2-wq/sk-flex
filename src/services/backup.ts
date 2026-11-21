@@ -6,6 +6,8 @@ export const BACKUP_COLLECTIONS = [
   'customers',
   'invoices',
   'payments',
+  // Append-only payment→invoice allocations (settlement records).
+  'allocations',
   'ledger',
   'frameRates',
   'settings',

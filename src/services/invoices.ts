@@ -1,4 +1,4 @@
-import type { Invoice, InvoiceDraft, InvoiceStatus, LedgerEntry, Payment, PaymentDraft } from '../lib/types';
+import type { Invoice, InvoiceDraft, InvoiceStatus, LedgerEntry, Payment, PaymentAllocation, PaymentDraft } from '../lib/types';
 import { calcBalance, invoiceStatus, invoiceTotals } from '../lib/billing';
 import { nowISO, todayISO } from '../lib/format';
 import { add, round2, sub, sum } from '../lib/money';
@@ -212,6 +212,13 @@ export async function createInvoice(svc: DataService, draft: InvoiceDraft): Prom
  * visible rather than orphaning its money rows.
  */
 export async function deleteInvoice(svc: DataService, invoice: Invoice): Promise<void> {
+  // Customer-level payments allocated to this invoice only make sense while the
+  // invoice exists; remove those allocation rows (the payment itself and its
+  // ledger entry stay — that money was really received).
+  const allocations = await svc.query<PaymentAllocation>('allocations');
+  for (const a of allocations.filter((x) => x.invoiceId === invoice.id)) {
+    await svc.delete('allocations', a.id);
+  }
   const ledger = await svc.query<LedgerEntry>('ledger');
   for (const e of ledger.filter((x) => x.invoiceId === invoice.id)) {
     await svc.delete('ledger', e.id);
@@ -258,7 +265,15 @@ export async function updateInvoice(svc: DataService, invoice: Invoice, draft: I
   const oldRecords = await invoicePaymentRecords(svc, invoice.id);
   const billingCashOld = round2(sum(oldRecords.map((p) => p.amount)));
   const creditOld = Math.max(0, current.creditApplied || 0);
-  const allocatedCashOld = round2(Math.max(0, sub(current.paid, add(billingCashOld, creditOld))));
+  // Prefer the append-only allocation rows: they are the exact record of the
+  // customer-level payments applied to this invoice (and stay correct even if
+  // two devices wrote a payment at the same moment). Fall back to the stored
+  // paid for invoices settled by builds that predate allocations.
+  const allAllocations = await svc.query<PaymentAllocation>('allocations');
+  const allocRows = allAllocations.filter((a) => a.invoiceId === invoice.id);
+  const allocatedCashOld = allocRows.length
+    ? round2(sum(allocRows.map((a) => a.amount)))
+    : round2(Math.max(0, sub(current.paid, add(billingCashOld, creditOld))));
   // Keep the previously applied credit (clamped to what the new total can use).
   const creditApplied = round2(Math.min(creditOld, Math.max(0, sub(t.total, add(allocatedCashOld, cashPaidNew)))));
   const { paid, balance, status } = settleInvoice(t.total, add(allocatedCashOld, cashPaidNew), creditOld);

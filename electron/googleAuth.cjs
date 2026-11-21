@@ -27,6 +27,13 @@ const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const SCOPES = 'openid email profile';
 const DEFAULT_TIMEOUT_MS = 180000;
+// Fixed loopback redirect for the installed app. A fixed port lets the SAME
+// public web OAuth client work when no separate "Desktop app" client exists:
+// its authorized redirect URI is simply
+//   http://127.0.0.1:38992/oauth2callback
+// (38991 is the app's own page server, so never reuse it here).
+const DEFAULT_REDIRECT_PORT = 38992;
+const REDIRECT_PATH = '/oauth2callback';
 
 function base64url(buf) {
   return Buffer.from(buf)
@@ -139,7 +146,14 @@ async function exchangeCode({ code, clientId, redirectUri, verifier }) {
  * Run the full flow. `openExternal` is Electron's shell.openExternal.
  * Resolves { idToken } — the caller must never log or persist it.
  */
-async function signInWithSystemBrowser({ clientId, loginHint, openExternal, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+async function signInWithSystemBrowser({
+  clientId,
+  loginHint,
+  openExternal,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  redirectPort = DEFAULT_REDIRECT_PORT,
+  redirectPath = REDIRECT_PATH
+}) {
   if (!clientId) {
     throw Object.assign(new Error('No Google desktop OAuth client ID is configured.'), { code: 'NOT_CONFIGURED' });
   }
@@ -150,15 +164,28 @@ async function signInWithSystemBrowser({ clientId, loginHint, openExternal, time
   const { verifier, challenge } = createPkcePair();
   const state = createState();
 
-  // Loopback listener: port 0 lets the OS pick a free port (Google's installed
-  // app flow accepts any port on the 127.0.0.1 loopback interface).
+  // Loopback listener on the FIXED redirect URL. A "Desktop app" OAuth client
+  // accepts any loopback port; a web client accepts this exact address once it
+  // is listed under Authorized redirect URIs.
   const server = http.createServer();
   await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
+    server.once('error', (e) => {
+      if (e && e.code === 'EADDRINUSE') {
+        reject(
+          Object.assign(
+            new Error(
+              `Port ${redirectPort} is already in use. Close the other SK Flex Billing window and try again.`
+            ),
+            { code: 'PORT_IN_USE' }
+          )
+        );
+      } else {
+        reject(e);
+      }
+    });
+    server.listen(redirectPort, '127.0.0.1', resolve);
   });
-  const port = server.address().port;
-  const redirectUri = `http://127.0.0.1:${port}`;
+  const redirectUri = `http://127.0.0.1:${redirectPort}${redirectPath}`;
 
   const result = new Promise((resolve, reject) => {
     let settled = false;
@@ -187,7 +214,7 @@ async function signInWithSystemBrowser({ clientId, loginHint, openExternal, time
         return;
       }
       const url = new URL(req.url, redirectUri);
-      if (url.pathname !== '/') {
+      if (url.pathname !== redirectPath) {
         res.writeHead(404).end();
         return;
       }
@@ -216,6 +243,8 @@ async function signInWithSystemBrowser({ clientId, loginHint, openExternal, time
 module.exports = {
   AUTH_ENDPOINT,
   TOKEN_ENDPOINT,
+  DEFAULT_REDIRECT_PORT,
+  REDIRECT_PATH,
   base64url,
   createPkcePair,
   createState,

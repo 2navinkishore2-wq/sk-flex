@@ -515,6 +515,7 @@ export class FirestoreDataService implements DataService {
         'customers',
         'invoices',
         'payments',
+        'allocations',
         'ledger',
         'frameRates',
         'settings',
