@@ -238,10 +238,44 @@ export class FirestoreDataService implements DataService {
         const result = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
         return this.toAuthUser(result.user);
       } catch (e) {
-        if (e instanceof DesktopGoogleSignInError && e.code === 'CANCELLED') {
+        const code = e instanceof DesktopGoogleSignInError ? e.code : 'FAILED';
+        if (code === 'CANCELLED') {
           throw new Error('sign-in-was-cancelled');
         }
-        throw e;
+        // The loopback flow needs Google to accept
+        // http://127.0.0.1:38992/oauth2callback for the OAuth client in use.
+        // That is a one-time Google Cloud setting; until it exists (or while the
+        // loopback port is taken) the flow cannot complete. Fall back to the
+        // Firebase popup, which works for this app because `localhost` is an
+        // authorized Firebase domain — it federates the SAME Google account to
+        // the same Firebase uid, so no data changes. Once the redirect URI is
+        // registered, the system-browser flow is used and this never runs.
+        const recoverable =
+          code === 'REDIRECT_URI_NOT_REGISTERED' ||
+          code === 'NOT_CONFIGURED' ||
+          code === 'TIMEOUT' ||
+          code === 'PORT_IN_USE';
+        if (!recoverable) throw e;
+        console.error('[auth] system-browser sign-in unavailable:', code, (e as Error).message);
+        try {
+          const cred = await signInWithPopup(auth, provider);
+          return this.toAuthUser(cred.user);
+        } catch (popupError) {
+          const popupMessage = (popupError as Error).message || 'Google sign-in failed.';
+          if (/popup-closed-by-user|cancelled-popup-request/i.test(popupMessage)) {
+            throw new Error('sign-in-was-cancelled');
+          }
+          if (/popup-blocked/i.test(popupMessage)) {
+            throw new Error(
+              'SK Flex Billing could not open the Google sign-in window. Allow pop-up windows for this app and try again.'
+            );
+          }
+          throw new Error(
+            code === 'REDIRECT_URI_NOT_REGISTERED'
+              ? `Google sign-in did not complete. For the browser sign-in, add http://127.0.0.1:38992/oauth2callback to the OAuth client's Authorized redirect URIs in the Google Cloud console, then try again. (${popupMessage})`
+              : popupMessage
+          );
+        }
       }
     }
 

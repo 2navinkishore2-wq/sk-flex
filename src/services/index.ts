@@ -32,9 +32,11 @@ export function missingFirebaseEnv(env: Record<string, string | undefined> = imp
     'VITE_FIREBASE_MESSAGING_SENDER_ID',
     'VITE_FIREBASE_APP_ID'
   ] as const;
-  const missing: string[] = required.filter((k) => !(env[k] || '').trim());
-  if (!(env.VITE_GOOGLE_DESKTOP_CLIENT_ID || '').trim()) missing.push('VITE_GOOGLE_DESKTOP_CLIENT_ID');
-  return missing;
+  // Only the Firebase web config is required for the cloud backend. The Google
+  // OAuth client is a separate concern (the Windows flow falls back to the web
+  // client id), so listing it here told users their Firebase config was missing
+  // when it was not.
+  return required.filter((k) => !(env[k] || '').trim());
 }
 
 export interface ServiceBundle {

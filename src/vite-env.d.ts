@@ -9,12 +9,15 @@ interface SkFlexDesktopUpdateResult {
   notes?: string;
   releaseUrl?: string;
   error?: string;
+  code?: string;
+  /** Raw updater message, shown only in the diagnostics section. */
+  details?: string;
 }
 
 interface SkFlexDesktopUpdateApi {
   check: () => Promise<SkFlexDesktopUpdateResult>;
-  download: () => Promise<{ ok: boolean; error?: string }>;
-  install: () => Promise<{ ok: boolean; error?: string }>;
+  download: () => Promise<{ ok: boolean; error?: string; details?: string }>;
+  install: () => Promise<{ ok: boolean; error?: string; details?: string }>;
   onProgress?: (cb: (p: { percent: number; state: string }) => void) => () => void;
 }
 

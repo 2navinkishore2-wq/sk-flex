@@ -20,6 +20,8 @@ export interface DesktopUpdateResult {
   notes?: string;
   releaseUrl?: string;
   error?: string;
+  /** Raw updater message, shown only inside the diagnostics section. */
+  details?: string;
 }
 
 export type UpdateState =
@@ -30,6 +32,8 @@ export type UpdateState =
   | 'offline'
   | 'error'
   | 'downloading'
+  | 'ready'
+  | 'installing'
   | 'unsupported';
 
 export interface UpdateStatus {
@@ -41,6 +45,13 @@ export interface UpdateStatus {
   /** Direct APK asset (Android) / installer page (web). */
   downloadUrl?: string;
   error?: string;
+  /** Technical detail for the diagnostics section — never the primary text. */
+  details?: string;
+  /**
+   * Windows only: the release has no updater metadata, so electron-updater
+   * cannot download it. The installer must be opened from the release page.
+   */
+  manualInstall?: boolean;
   progress?: number;
   checkedAt?: string;
 }
@@ -112,6 +123,34 @@ export interface CheckOptions {
  * Check for a newer release. Android uses the GitHub API (asset + notes),
  * Windows asks electron-updater, and the web build only compares versions.
  */
+/** Resolve the newest published release through the public GitHub API. */
+async function fetchLatestRelease(opts: {
+  fetcher?: typeof fetch;
+  timeoutMs?: number;
+}): Promise<{ release?: ReturnType<typeof parseRelease>; error?: string }> {
+  const fetcher = opts.fetcher || (typeof fetch !== 'undefined' ? fetch : undefined);
+  if (!fetcher) return { error: 'Update checks are not available here.' };
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), opts.timeoutMs || 12000) : null;
+  try {
+    const res = await fetcher(GITHUB_LATEST_API, {
+      headers: { Accept: 'application/vnd.github+json' },
+      signal: controller ? controller.signal : undefined
+    });
+    if (!res.ok) return { error: `Update check failed (HTTP ${res.status})` };
+    const release = parseRelease((await res.json()) as GithubRelease);
+    if (!release.version) return { error: 'Release information was incomplete' };
+    return { release };
+  } catch (e) {
+    const err = e as Error;
+    return {
+      error: err.name === 'AbortError' ? 'Update check timed out' : 'Could not reach GitHub. Check your connection.'
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function checkForUpdate(opts: CheckOptions = {}): Promise<UpdateStatus> {
   const current = opts.currentVersion || currentAppVersion();
   const platform = opts.platform || runtimePlatform();
@@ -135,27 +174,34 @@ export async function checkForUpdate(opts: CheckOptions = {}): Promise<UpdateSta
         };
       }
       if (r.state === 'up-to-date') return { state: 'current', latestVersion: r.version || current, checkedAt };
-      return { state: 'error', error: r.error || 'Update check failed', checkedAt };
+      // electron-updater could not read the release's updater metadata (releases
+      // published before latest.yml existed). Ask the public API instead, so the
+      // app can still tell the user a newer version exists and where to get it.
+      const viaApi = await fetchLatestRelease({ fetcher: opts.fetcher, timeoutMs: opts.timeoutMs });
+      if (viaApi.release && compareVersions(viaApi.release.version, current) > 0) {
+        return {
+          state: 'available',
+          latestVersion: viaApi.release.version,
+          notes: viaApi.release.notes,
+          releaseUrl: viaApi.release.releaseUrl,
+          downloadUrl: viaApi.release.installerUrl,
+          manualInstall: true,
+          details: r.details,
+          checkedAt
+        };
+      }
+      return { state: 'error', error: r.error || 'Update check failed', details: r.details, checkedAt };
     } catch (e) {
       return { state: 'error', error: (e as Error).message || 'Update check failed', checkedAt };
     }
   }
 
-  const fetcher = opts.fetcher || (typeof fetch !== 'undefined' ? fetch : undefined);
-  if (!fetcher) return { state: 'unsupported', error: 'Update checks are not available here.', checkedAt };
-
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), opts.timeoutMs || 12000) : null;
+  const { release, error } = await fetchLatestRelease({
+    fetcher: opts.fetcher,
+    timeoutMs: opts.timeoutMs
+  });
+  if (!release) return { state: 'error', error: error || 'Update check failed', checkedAt };
   try {
-    const res = await fetcher(GITHUB_LATEST_API, {
-      headers: { Accept: 'application/vnd.github+json' },
-      signal: controller ? controller.signal : undefined
-    });
-    if (!res.ok) {
-      return { state: 'error', error: `Update check failed (HTTP ${res.status})`, checkedAt };
-    }
-    const release = parseRelease((await res.json()) as GithubRelease);
-    if (!release.version) return { state: 'error', error: 'Release information was incomplete', checkedAt };
     if (compareVersions(release.version, current) > 0) {
       return {
         state: 'available',
@@ -168,14 +214,7 @@ export async function checkForUpdate(opts: CheckOptions = {}): Promise<UpdateSta
     }
     return { state: 'current', latestVersion: release.version, checkedAt };
   } catch (e) {
-    const err = e as Error;
-    return {
-      state: 'error',
-      error: err.name === 'AbortError' ? 'Update check timed out' : 'Could not reach GitHub. Check your connection.',
-      checkedAt
-    };
-  } finally {
-    if (timer) clearTimeout(timer);
+    return { state: 'error', error: (e as Error).message || 'Could not read the release information.', checkedAt };
   }
 }
 
@@ -250,6 +289,10 @@ export function updateStateLabel(s: UpdateState): string {
       return 'Update available';
     case 'current':
       return 'Up to date';
+    case 'ready':
+      return 'Ready to install';
+    case 'installing':
+      return 'Installing…';
     case 'offline':
       return 'Offline';
     case 'error':

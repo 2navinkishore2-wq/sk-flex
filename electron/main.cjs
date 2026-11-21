@@ -108,12 +108,56 @@ function versionGt(a, b) {
   return false;
 }
 
+/**
+ * Translate an electron-updater exception into something a shop owner can read.
+ * The raw message is kept in `details` for the expandable diagnostics section;
+ * it is never shown as the primary text.
+ */
+function friendlyUpdateError(raw) {
+  const message = String(raw || '');
+  if (/latest\.ya?ml|Cannot find|no published versions|404/i.test(message)) {
+    return {
+      code: 'MISSING_METADATA',
+      error: 'The update information for the newest release is missing, so the update could not be checked automatically. You can download the installer from the release page.',
+      details: message
+    };
+  }
+  if (/net::|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNREFUSED|socket hang up|network/i.test(message)) {
+    return {
+      code: 'NETWORK',
+      error: 'Could not reach GitHub. Check your internet connection and try again.',
+      details: message
+    };
+  }
+  if (/sha512|checksum/i.test(message)) {
+    return {
+      code: 'CHECKSUM',
+      error: 'The downloaded update could not be verified and was discarded. Please try again.',
+      details: message
+    };
+  }
+  if (/EPERM|EACCES|EBUSY/i.test(message)) {
+    return {
+      code: 'PERMISSION',
+      error: 'Windows blocked the update files. Close other copies of SK Flex Billing and try again.',
+      details: message
+    };
+  }
+  return {
+    code: 'UNKNOWN',
+    error: 'The update check failed. Please try again in a moment.',
+    details: message
+  };
+}
+
 function setupUpdater() {
   ipcMain.handle('skflex:update-check', async () => {
     if (!app.isPackaged) {
       return { state: 'up-to-date', version: app.getVersion() };
     }
     try {
+      // null is returned when a check is already in flight — never treat it as
+      // "up to date" when the version is unknown.
       const result = await autoUpdater.checkForUpdates();
       const latest = result && result.updateInfo ? result.updateInfo.version : '';
       const installed = app.getVersion();
@@ -128,28 +172,34 @@ function setupUpdater() {
       }
       return { state: 'up-to-date', version: installed };
     } catch (e) {
-      return { state: 'error', error: (e && e.message) || 'Update check failed' };
+      return { state: 'error', ...friendlyUpdateError(e && e.message) };
     }
   });
 
   ipcMain.handle('skflex:update-download', async () => {
-    if (!app.isPackaged) return { ok: false, error: 'Updates are only checked in the installed app.' };
+    if (!app.isPackaged) return { ok: false, error: 'Updates are only available in the installed app.' };
     try {
       await autoUpdater.downloadUpdate();
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: (e && e.message) || 'Download failed' };
+      const friendly = friendlyUpdateError(e && e.message);
+      console.error('[updater] download failed:', friendly.details);
+      return { ok: false, error: friendly.error, details: friendly.details };
     }
   });
 
   ipcMain.handle('skflex:update-install', async () => {
     if (!app.isPackaged) return { ok: false, error: 'Updates are only installed in the installed app.' };
     try {
+      if (win) win.webContents.send('skflex:update-progress', { percent: 100, state: 'installing' });
       // Give the IPC reply a chance to reach the renderer before quitting.
-      setImmediate(() => autoUpdater.quitAndInstall(false, true));
+      // Silent install, then relaunch the app automatically with data intact.
+      setImmediate(() => autoUpdater.quitAndInstall(true, true));
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: (e && e.message) || 'Install failed' };
+      const friendly = friendlyUpdateError(e && e.message);
+      console.error('[updater] install failed:', friendly.details);
+      return { ok: false, error: friendly.error, details: friendly.details };
     }
   });
 
@@ -157,11 +207,13 @@ function setupUpdater() {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.autoRunAppAfterInstall = true;
   autoUpdater.on('download-progress', (p) => {
     if (win) win.webContents.send('skflex:update-progress', { percent: p.percent || 0, state: 'downloading' });
   });
   autoUpdater.on('update-downloaded', () => {
-    if (win) win.webContents.send('skflex:update-progress', { percent: 100, state: 'downloaded' });
+    if (win) win.webContents.send('skflex:update-progress', { percent: 100, state: 'ready' });
   });
   autoUpdater.on('error', (e) => {
     console.error('[updater]', e && e.message ? e.message : e);

@@ -71,6 +71,62 @@ function buildAuthUrl({ clientId, redirectUri, challenge, state, loginHint }) {
 }
 
 /**
+ * Ask Google up front whether it accepts `redirectUri` for this client.
+ *
+ * A WEB OAuth client only accepts redirect URIs that are registered in the
+ * Google Cloud console. When one is not registered, Google stops at its own
+ * "Access blocked / redirect_uri_mismatch" page: the browser never comes back to
+ * the loopback listener and the user only sees a timeout minutes later. One
+ * unauthenticated GET (no cookies, no tokens) tells us before we open anything.
+ *
+ * Returns { ok: true } when the URI is accepted (or when the probe itself could
+ * not run — the real flow then reports the true error).
+ */
+async function probeRedirectUri({ clientId, redirectUri }) {
+  if (typeof fetch !== 'function') return { ok: true };
+  try {
+    // A REAL PKCE challenge: Google validates it before the redirect URI, and an
+    // invalid one would mask the mismatch we are looking for.
+    const { challenge } = createPkcePair();
+    const url = buildAuthUrl({ clientId, redirectUri, challenge, state: 'probe' });
+    const res = await fetch(url, {
+      redirect: 'follow',
+      headers: { 'User-Agent': 'SKFlexBilling (Windows)' }
+    });
+    const body = await res.text();
+    // Google redirects to /signin/oauth/error?authError=<base64>. The code we
+    // care about (redirect_uri_mismatch) lives in that decoded payload.
+    let haystack = `${res.url}\n${body}`;
+    const errParam = /[?&]authError=([^&]+)/.exec(res.url);
+    if (errParam) {
+      try {
+        haystack += `\n${Buffer.from(decodeURIComponent(errParam[1]), 'base64').toString('utf8')}`;
+      } catch {
+        /* not base64 — the raw URL is still checked */
+      }
+    }
+    if (/invalid_client/i.test(haystack)) {
+      return {
+        ok: false,
+        code: 'INVALID_CLIENT_ID',
+        message: 'Google rejected this OAuth client ID. Check the OAuth client under the sk-flex-billing project.'
+      };
+    }
+    if (/redirect_uri_mismatch/i.test(haystack)) {
+      return {
+        ok: false,
+        code: 'REDIRECT_URI_NOT_REGISTERED',
+        message: `Google does not accept ${redirectUri} for this OAuth client.`,
+        redirectUri
+      };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: true };
+  }
+}
+
+/**
  * Validate the loopback callback. Throws on a missing/mismatched state (a
  * hostile or stale callback is never exchanged) or on a provider error.
  */
@@ -164,9 +220,18 @@ async function signInWithSystemBrowser({
   const { verifier, challenge } = createPkcePair();
   const state = createState();
 
+  const redirectUri = `http://127.0.0.1:${redirectPort}${redirectPath}`;
+
+  // Refuse before opening the browser when Google would reject the redirect:
+  // a policy error page never calls back, so waiting would only time out.
+  const probe = await probeRedirectUri({ clientId, redirectUri });
+  if (!probe.ok) {
+    throw Object.assign(new Error(probe.message), { code: probe.code, redirectUri });
+  }
+
   // Loopback listener on the FIXED redirect URL. A "Desktop app" OAuth client
   // accepts any loopback port; a web client accepts this exact address once it
-  // is listed under Authorized redirect URIs.
+  // is listed under Authorized Redirect URIs.
   const server = http.createServer();
   await new Promise((resolve, reject) => {
     server.once('error', (e) => {
@@ -185,7 +250,6 @@ async function signInWithSystemBrowser({
     });
     server.listen(redirectPort, '127.0.0.1', resolve);
   });
-  const redirectUri = `http://127.0.0.1:${redirectPort}${redirectPath}`;
 
   const result = new Promise((resolve, reject) => {
     let settled = false;
@@ -261,6 +325,7 @@ module.exports = {
   createPkcePair,
   createState,
   buildAuthUrl,
+  probeRedirectUri,
   parseCallback,
   exchangeCode,
   signInWithSystemBrowser

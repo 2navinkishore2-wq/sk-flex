@@ -37,7 +37,13 @@ export function LoginPage() {
       // onAuthChange will flip the user state and redirect
     } catch (e) {
       const msg = (e as Error).message || 'Google sign-in failed.';
-      setError(/cancelled/i.test(msg) ? 'Sign-in was cancelled.' : msg);
+      setError(
+        /cancelled/i.test(msg)
+          ? 'Sign-in was cancelled.'
+          : /redirect_uri_mismatch/i.test(msg)
+            ? 'Google rejected the sign-in return address. Add http://127.0.0.1:38992/oauth2callback to the OAuth client in the Google Cloud console, then try again.'
+            : msg
+      );
     } finally {
       setBusy(null);
     }
@@ -103,8 +109,14 @@ export function LoginPage() {
                 <li>Open your existing Firebase project (Project settings → Your apps → Web app).</li>
                 <li>Copy the six config values into <code>.env</code>.</li>
                 <li>Authentication → Sign-in method: enable <b>Google</b>.</li>
-                <li>Add the Windows OAuth <b>Desktop</b> client ID as <code>VITE_GOOGLE_DESKTOP_CLIENT_ID</code>.</li>
-                <li>Rebuild the app (<code>npm run build</code> / <code>npm run electron:build</code>).</li>
+                <li>
+                  Rebuild the app (<code>npm run build</code> / <code>npm run electron:build</code>).
+                </li>
+                <li>
+                  For the Windows browser sign-in, either create a <b>Desktop app</b> OAuth client as{' '}
+                  <code>VITE_GOOGLE_DESKTOP_CLIENT_ID</code>, or add{' '}
+                  <code>http://127.0.0.1:38992/oauth2callback</code> to the web client s Authorized redirect URIs.
+                </li>
               </ol>
             </div>
             <Button variant="ghost" block onClick={() => void doPreview()} disabled={busy !== null}>
