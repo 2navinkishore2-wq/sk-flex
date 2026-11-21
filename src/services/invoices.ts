@@ -29,6 +29,14 @@ export function validateInvoiceDraft(draft: InvoiceDraft): string | null {
   if (!draft.customerId || !draft.customer.name) return 'Select a customer.';
   if (draft.items.length === 0) return 'Add at least one item.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date || '')) return 'Enter a valid Bill Date.';
+  // A discount larger than the bill, or a percentage above 100, is never valid
+  // input — it would silently floor the total at ₹0 and hide the mistake.
+  const dv = Number(draft.discountValue) || 0;
+  if (!Number.isFinite(dv) || dv < 0) return 'Enter a valid discount.';
+  if (draft.discountType === 'percent' && dv > 100) return 'Percentage discount cannot be more than 100%.';
+  if (draft.discountType === 'amount' && dv > round2(sum(draft.items.map((i) => i.amount)))) {
+    return 'Discount cannot be more than the bill subtotal.';
+  }
   for (const item of draft.items) {
     if (!item.label) return 'Every item needs a name.';
     if (!Number.isFinite(item.rate) || item.rate < 0) return `Invalid rate for "${item.label}".`;
@@ -118,39 +126,57 @@ export async function createInvoice(svc: DataService, draft: InvoiceDraft): Prom
     updatedAt: createdAt
   });
 
-  // Ledger: invoice debit (+total)
-  await addLedgerEntry(svc, {
-    customerId: draft.customerId,
-    type: 'invoice',
-    date: createdAt,
-    description: `Invoice ${number}`,
-    invoiceId: id,
-    invoiceNumber: number,
-    amount: t.total
-  });
-  // Payments: one ledger entry + one payment record each, with its own
-  // Payment Date (may differ from the Bill Date).
-  for (const p of payments) {
-    await addLedgerEntry(svc, {
+  // The bill and its ledger rows are one unit: if the ledger cannot be
+  // written, the whole save is rolled back so a bill never exists without its
+  // ledger entry (which would silently understate the customer's balance).
+  const ledgerIds: string[] = [];
+  const paymentIds: string[] = [];
+  try {
+    // Ledger: invoice debit (+total)
+    const invEntry = await addLedgerEntry(svc, {
       customerId: draft.customerId,
-      type: 'payment',
+      type: 'invoice',
       date: createdAt,
-      paymentDate: p.date,
-      description: `Payment received — Invoice ${number}${p.method && p.method !== 'Cash' ? ` (${p.method})` : ''}`,
+      description: `Invoice ${number}`,
       invoiceId: id,
       invoiceNumber: number,
-      amount: -p.amount
+      amount: t.total
     });
-    await svc.add('payments', {
-      customerId: draft.customerId,
-      invoiceId: id,
-      invoiceNumber: number,
-      amount: p.amount,
-      date: p.date,
-      method: p.method,
-      note: p.note || '',
-      createdAt
-    });
+    ledgerIds.push(invEntry.id);
+    // Payments: one ledger entry + one payment record each, with its own
+    // Payment Date (may differ from the Bill Date).
+    for (const p of payments) {
+      const payEntry = await addLedgerEntry(svc, {
+        customerId: draft.customerId,
+        type: 'payment',
+        date: createdAt,
+        paymentDate: p.date,
+        description: `Payment received — Invoice ${number}${p.method && p.method !== 'Cash' ? ` (${p.method})` : ''}`,
+        invoiceId: id,
+        invoiceNumber: number,
+        amount: -p.amount
+      });
+      ledgerIds.push(payEntry.id);
+      paymentIds.push(
+        await svc.add('payments', {
+          customerId: draft.customerId,
+          invoiceId: id,
+          invoiceNumber: number,
+          amount: p.amount,
+          date: p.date,
+          method: p.method,
+          note: p.note || '',
+          createdAt
+        })
+      );
+    }
+  } catch (e) {
+    for (const pid of paymentIds) await svc.delete('payments', pid).catch(() => undefined);
+    for (const lid of ledgerIds) await svc.delete('ledger', lid).catch(() => undefined);
+    await svc.delete('invoices', id).catch(() => undefined);
+    throw new Error(
+      `The bill was not saved because the customer ledger could not be updated (${(e as Error).message}). Nothing was changed — please retry.`
+    );
   }
 
   return {
@@ -174,6 +200,27 @@ export async function createInvoice(svc: DataService, draft: InvoiceDraft): Prom
     createdAt,
     updatedAt: createdAt
   };
+}
+
+/**
+ * Delete an invoice AND the rows that belong to it: its ledger entries and its
+ * billing-time payment records. Customer-level payments (received from the
+ * customer against the account, invoiceId '') are never touched — that money
+ * really was received and must keep counting in the customer's balance.
+ *
+ * The invoice document is removed last, so a failure part-way leaves the bill
+ * visible rather than orphaning its money rows.
+ */
+export async function deleteInvoice(svc: DataService, invoice: Invoice): Promise<void> {
+  const ledger = await svc.query<LedgerEntry>('ledger');
+  for (const e of ledger.filter((x) => x.invoiceId === invoice.id)) {
+    await svc.delete('ledger', e.id);
+  }
+  const payments = await svc.query<Payment>('payments');
+  for (const p of payments.filter((x) => x.invoiceId === invoice.id)) {
+    await svc.delete('payments', p.id);
+  }
+  await svc.delete('invoices', invoice.id);
 }
 
 /**

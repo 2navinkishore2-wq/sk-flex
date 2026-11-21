@@ -5,6 +5,7 @@ import { useApp } from '../store/AppContext';
 import { InvoiceDocument } from '../components/InvoiceDocument';
 import { downloadInvoiceJpg, downloadInvoicePdf, invoiceFileName, printInvoice } from '../services/export';
 import { recordPayment } from '../services/payments';
+import { deleteInvoice } from '../services/invoices';
 import { Button, Card, ConfirmDialog, Field, Modal, Row, Spinner, useToast } from '../components/ui';
 import { formatINR, formatDate } from '../lib/format';
 
@@ -114,9 +115,15 @@ export function InvoiceViewPage() {
   };
 
   const doDelete = async () => {
-    await app.service.delete('invoices', invoice.id);
-    toast('Invoice deleted', 'info');
-    navigate('/invoices');
+    try {
+      // Removes the invoice together with its own ledger + payment rows, so the
+      // customer's balance/statement stays exact after a deletion.
+      await deleteInvoice(app.service, invoice);
+      toast('Invoice deleted', 'info');
+      navigate('/invoices');
+    } catch (e) {
+      toast((e as Error).message || 'Could not delete the invoice', 'error');
+    }
   };
 
   return (
